@@ -21,6 +21,7 @@ import java.io.IOException;
 
 import org.apache.arrow.dataset.source.DatasetFactory;
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.NativeContext;
 import org.apache.arrow.util.SchemaUtils;
 import org.apache.arrow.vector.types.pojo.Schema;
 

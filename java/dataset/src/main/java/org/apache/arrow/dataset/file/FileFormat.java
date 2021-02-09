@@ -21,7 +21,7 @@ package org.apache.arrow.dataset.file;
  * File format definitions.
  */
 public enum FileFormat {
-  PARQUET(0);
+  PARQUET(0),
   CSV(1);
 
   private int id;

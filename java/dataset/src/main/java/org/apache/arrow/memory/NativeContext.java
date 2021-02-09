@@ -15,8 +15,9 @@
  * limitations under the License.
  */
 
-package org.apache.arrow.dataset.jni;
+package org.apache.arrow.memory;
 
+import org.apache.arrow.dataset.jni.NativeMemoryPool;
 import org.apache.arrow.memory.BaseAllocator;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.util.Preconditions;

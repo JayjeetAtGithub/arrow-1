@@ -35,7 +35,7 @@ public class NativeUnderlyingMemory extends AllocationManager {
    * @param size Size of underling memory (in bytes)
    * @param nativeInstanceId ID of the native instance
    */
-  public NativeUnderlyingMemory(BaseAllocator accountingAllocator, int size, long nativeInstanceId, long address) {
+  public NativeUnderlyingMemory(BufferAllocator accountingAllocator, int size, long nativeInstanceId, long address) {
     super(accountingAllocator);
     this.size = size;
     this.nativeInstanceId = nativeInstanceId;
@@ -50,12 +50,13 @@ public class NativeUnderlyingMemory extends AllocationManager {
   }
 
   @Override
-  public BufferLedger associate(BaseAllocator allocator) {
+  public BufferLedger associate(BufferAllocator allocator) {
     return super.associate(allocator);
   }
 
+
   @Override
-  protected void releaseFromAllocator(BaseAllocator allocator) {
+  protected void releaseFromAllocator(BufferAllocator allocator) {
     // Comparing to BaseAllocator#release, we are not calling listener#onRelease at here
     // since we never retained bytes from the listener.
     long size = getSize();

@@ -20,6 +20,7 @@ package org.apache.arrow.dataset.jni;
 import org.apache.arrow.dataset.fragment.DataFragment;
 import org.apache.arrow.dataset.scanner.ScanOptions;
 import org.apache.arrow.dataset.source.Dataset;
+import org.apache.arrow.memory.NativeContext;
 
 /**
  * Native implementation of {@link Dataset}.

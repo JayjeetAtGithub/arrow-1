@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.stream.Collectors;
 
 import org.apache.arrow.dataset.scanner.Scanner;
+import org.apache.arrow.memory.NativeContext;
 import org.apache.arrow.util.SchemaUtils;
 import org.apache.arrow.vector.types.pojo.Schema;
 

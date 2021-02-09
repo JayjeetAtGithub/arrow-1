@@ -23,16 +23,14 @@ import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 import org.apache.arrow.dataset.scanner.ScanTask;
-import org.apache.arrow.memory.BaseAllocator;
-import org.apache.arrow.memory.BufferLedger;
-import org.apache.arrow.memory.NativeUnderlyingMemory;
+import org.apache.arrow.memory.*;
 import org.apache.arrow.vector.ipc.ArrowReader;
 import org.apache.arrow.vector.ipc.message.ArrowDictionaryBatch;
 import org.apache.arrow.vector.ipc.message.ArrowFieldNode;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.types.pojo.Schema;
 
-import io.netty.buffer.ArrowBuf;
+//import io.netty.buffer.ArrowBuf;
 
 /**
  * Native implementation of {@link NativeScanTask}.
@@ -134,11 +132,11 @@ public class NativeScanTask implements ScanTask, AutoCloseable {
     private ArrowRecordBatch toArrowRecordBatch(NativeRecordBatchHandle handle) {
       final ArrayList<ArrowBuf> buffers = new ArrayList<>();
       for (NativeRecordBatchHandle.Buffer buffer : handle.getBuffers()) {
-        final BaseAllocator allocator = context.getAllocator();
+        final BufferAllocator allocator = context.getAllocator();
         final NativeUnderlyingMemory am = new NativeUnderlyingMemory(allocator,
             (int) buffer.size, buffer.nativeInstanceId, buffer.memoryAddress);
         final BufferLedger ledger = am.associate(allocator);
-        ArrowBuf buf = new ArrowBuf(ledger, null, (int) buffer.size, buffer.memoryAddress, false);
+        ArrowBuf buf = new ArrowBuf(ledger, null, (int) buffer.size, buffer.memoryAddress); //, false
         buffers.add(buf);
       }
       try {

@@ -15,30 +15,28 @@
  * limitations under the License.
  */
 
-package org.apache.arrow.dataset.file;
+package org.apache.arrow.dataset.rados;
 
 import org.apache.arrow.dataset.jni.NativeDatasetFactory;
 import org.apache.arrow.dataset.jni.NativeMemoryPool;
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.dataset.file.FileFormat;
 
 /**
- * Java binding of the C++ SingleFileDataSourceDiscovery.
+ * Java binding of the C++ RadosDatasetFactory.
  */
-public class SingleFileDatasetFactory extends NativeDatasetFactory {
+public class RadosDatasetFactory extends NativeDatasetFactory {
 
-  public SingleFileDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format,
-      FileSystem fs, String path) {
-    super(allocator, memoryPool, createNative(format, fs, path, -1L, -1L));
+  public RadosDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format, String path_to_config, String path) {
+    super(allocator, memoryPool, createNative(format, path_to_config, path, -1L, -1L));
   }
 
-  public SingleFileDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format,
-      FileSystem fs, String path, long startOffset, long length) {
-    super(allocator, memoryPool, createNative(format, fs, path, startOffset, length));
+  public RadosDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format, String path_to_config, String path, long startOffset, long length) {
+    super(allocator, memoryPool, createNative(format, path_to_config, path, startOffset, length));
   }
 
-  private static long createNative(FileFormat format, FileSystem fs, String path, long startOffset, long length) {
-    return JniWrapper.get().makeSingleFileDatasetFactory(fs.protocal() + "://" + path,
-        format.id(), startOffset, length);
+  private static long createNative(FileFormat format, String path_to_config, String path, long startOffset, long length) {
+    return JniWrapper.get().makeRadosDatasetFactory(path_to_config, "file://" + path, format.id(), startOffset, length);
   }
 
 }
