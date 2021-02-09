@@ -15,28 +15,28 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <mutex>
-
-
 #include <arrow/array.h>
+#include <arrow/compare.h>
+#include <arrow/compute/api_scalar.h>
+#include <arrow/compute/kernel.h>
 #include <arrow/dataset/api.h>
 #include <arrow/dataset/expression.h>
 #include <arrow/dataset/file_base.h>
+#include <arrow/dataset/file_rados_parquet.h>
 #include <arrow/filesystem/localfs.h>
+#include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
 #include <arrow/util/iterator.h>
-#include <arrow/io/api.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/message.h>
-#include <arrow/compute/kernel.h>
-#include <arrow/compare.h>
-#include <arrow/compute/api_scalar.h>
 #include <jni/dataset/DTypes.pb.h>
 #include <jni/dataset/concurrent_map.h>
 #include <jni/dataset/jni_memory_pool.h>
 
-#include "org_apache_arrow_dataset_jni_JniWrapper.h"
+#include <mutex>
+
 #include "org_apache_arrow_dataset_file_JniWrapper.h"
+#include "org_apache_arrow_dataset_jni_JniWrapper.h"
 
 static jclass illegal_access_exception_class;
 static jclass illegal_argument_exception_class;
@@ -88,6 +88,9 @@ static ConcurrentMap<std::shared_ptr<arrow::Buffer>> buffer_holder_;
        env->ThrowNew(runtime_exception_class, _st.message().c_str());  \
     }                                                                         \
   } while (false);
+
+#define FORMAT_PARQUET 0
+#define FORMAT_CSV 1
 
 jclass CreateGlobalClassReference(JNIEnv* env, const char* class_name) {
   jclass local_class = env->FindClass(class_name);
@@ -194,12 +197,14 @@ std::shared_ptr<arrow::Schema> SchemaFromColumnNames(
 
 std::shared_ptr<arrow::dataset::FileFormat> GetFileFormat(JNIEnv *env, jint id) {
   switch (id) {
-    case 0:
+    case FORMAT_PARQUET:
       return std::make_shared<arrow::dataset::ParquetFileFormat>();
+    case FORMAT_CSV:
+      return std::make_shared<arrow::dataset::CsvFileFormat>();
     default:
       std::string error_message = "illegal file format id: " + std::to_string(id);
       env->ThrowNew(illegal_argument_exception_class, error_message.c_str());
-      return nullptr; // unreachable
+      return nullptr;  // unreachable
   }
 }
 
@@ -673,10 +678,19 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeSingleFileDatasetFactory(
  */
 JNIEXPORT jlong JNICALL
 Java_org_apache_arrow_dataset_file_JniWrapper_makeRadosDatasetFactory(
-    JNIEnv* env, jobject, jstring uri, jint file_format_id,
+    JNIEnv* env, jobject, jstring path_to_config, jstring uri, jint file_format_id,
     jlong start_offset, jlong length) {
-  std::shared_ptr<arrow::dataset::FileFormat> file_format =
-      GetFileFormat(env, file_format_id);
+  std::shared_ptr<arrow::dataset::FileFormat> file_format;
+  switch(file_format_id) {
+    case FORMAT_PARQUET:
+      file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(JStringToCString(env, path_to_config));
+      break;
+    default:
+      const std::string err = "RadosDatasetFactory is not capable yet of reading given fileformat: fileformat="+std::to_string(file_format_id);
+      env->ThrowNew(illegal_argument_exception_class, err.c_str());
+      return -1L;
+  }
+
   arrow::dataset::FileSystemFactoryOptions options;
   JNI_ASSIGN_OR_THROW(std::shared_ptr<arrow::dataset::DatasetFactory> d,
                       arrow::dataset::FileSystemDatasetFactory::Make(

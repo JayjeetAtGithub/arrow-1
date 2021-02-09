@@ -42,7 +42,6 @@ if(ARROW_RADOS)
   set(ARROW_DATASET_SRCS ${ARROW_DATASET_SRCS} file_rados_parquet.cc)
   set(ARROW_DATASET_SRCS ${ARROW_DATASET_SRCS} rados_utils.cc)
   set(ARROW_DATASET_SRCS ${ARROW_DATASET_SRCS} rados.cc)
-  set(ARROW_DATASET_SRCS ${ARROW_DATASET_SRCS} discovery_rados.cc)
 endif()
 
 if(ARROW_CSV)
