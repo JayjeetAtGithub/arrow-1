@@ -268,10 +268,10 @@ Result<std::shared_ptr<Dataset>> FileSystemDatasetFactory::Finish(FinishOptions 
   }
 
   std::vector<std::shared_ptr<FileFragment>> fragments;
-  for (const auto& src : files_) {
-    auto fixed_path = StripPrefixAndFilename(src.path(), options_.partition_base_dir);
+  for (const auto& info : files_) {
+    auto fixed_path = StripPrefixAndFilename(info.path(), options_.partition_base_dir);
     ARROW_ASSIGN_OR_RAISE(auto partition, partitioning->Parse(fixed_path));
-    ARROW_ASSIGN_OR_RAISE(auto fragment, format_->MakeFragment(src, partition));
+    ARROW_ASSIGN_OR_RAISE(auto fragment, format_->MakeFragment(info, partition, 1, schema));
     fragments.push_back(fragment);
   }
 
