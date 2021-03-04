@@ -336,13 +336,6 @@ if(ARROW_CUDA
   set(ARROW_IPC ON)
 endif()
 
-if(ARROW_CLS)
-  set(ARROW_RADOS ON)
-endif()
-
-if(ARROW_RADOS)
-  set(ARROW_DATASET ON)
-endif()
 
 if(ARROW_DATASET)
   set(ARROW_COMPUTE ON)

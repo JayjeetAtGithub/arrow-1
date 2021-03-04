@@ -15,10 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-if(DEFINED ARROW_RADOS_CLS_FOUND)
-  return()
-endif()
-
 set(find_package_arguments)
 if(${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION)
   list(APPEND find_package_arguments "${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION}")
@@ -67,7 +63,6 @@ find_package_handle_standard_args(ArrowCls
                                   ARROW_CLS_VERSION_MATCH
                                   VERSION_VAR
                                   ARROW_CLS_VERSION)
-set(ARROW_RADOS_CLS_FOUND ${ArrowCls_FOUND})
 
 if(ArrowCls_FOUND AND NOT ArrowCls_FIND_QUIETLY)
   message(STATUS "Found the Arrow Cls by ${ARROW_CLS_FIND_APPROACH}")
