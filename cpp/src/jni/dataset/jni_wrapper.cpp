@@ -672,12 +672,12 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeSingleFileDatasetFactory(
 }
 
 /*
- * Class:     org_apache_arrow_dataset_file_JniWrapper
+ * Class:     org_apache_arrow_dataset_rados_JniWrapper
  * Method:    makeRadosDatasetFactory
  * Signature: (Ljava/lang/String;II)J
  */
 JNIEXPORT jlong JNICALL
-Java_org_apache_arrow_dataset_file_JniWrapper_makeRadosDatasetFactory(
+Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(
     JNIEnv* env, jobject, jstring path_to_config, jstring uri, jint file_format_id,
     jlong start_offset, jlong length) {
   std::shared_ptr<arrow::dataset::FileFormat> file_format;

@@ -17,7 +17,6 @@
 
 package org.apache.arrow.dataset.rados;
 
-import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.dataset.jni.JniLoader;
 
 /**
