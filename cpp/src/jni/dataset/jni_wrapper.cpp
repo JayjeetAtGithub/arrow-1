@@ -37,6 +37,8 @@
 
 #include "org_apache_arrow_dataset_file_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_JniWrapper.h"
+#include "org_apache_arrow_dataset_rados_JniWrapper.h"
+
 
 static jclass illegal_access_exception_class;
 static jclass illegal_argument_exception_class;
