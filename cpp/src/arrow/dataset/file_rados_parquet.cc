@@ -47,31 +47,6 @@ class RadosParquetScanTask : public ScanTask {
         doa_(std::move(doa)){}
 
   Result<RecordBatchIterator> Execute() override {
-//    std::shared_ptr<librados::bufferlist> in = std::make_shared<librados::bufferlist>();
-//    std::shared_ptr<librados::bufferlist> out = std::make_shared<librados::bufferlist>();
-//
-//    ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(options_->filter, partition_expression, options_->projector.schema(), dataset_schema, in));
-//
-//    Status s = doa_->Exec(source_.path(), "scan", in, out);
-//    if (!s.ok()) {
-//      return Status::ExecutionError(s.message());
-//    }
-//
-//    char* scanned_table_buffer = new char[out->length()];
-//    librados::bufferlist::iterator itr = out->begin();
-//    itr.copy(out->length(), scanned_table_buffer);
-//    /// copying out from the bufferist into a char pointer
-//    /// fixed the segmentation fault issue. Maybe we can use shallow copy.
-//
-//    RecordBatchVector batches;
-//    auto buffer = std::make_shared<Buffer>((uint8_t*)scanned_table_buffer, out->length());
-//    auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
-//    ARROW_ASSIGN_OR_RAISE(auto rb_reader,
-//                          arrow::ipc::RecordBatchStreamReader::Open(buffer_reader));
-//    ARROW_RETURN_NOT_OK(rb_reader->ReadAll(&batches));
-//    return MakeVectorIterator(batches);
-
-
     ceph::bufferlist* in = new ceph::bufferlist();
     ceph::bufferlist* out = new ceph::bufferlist();
 
