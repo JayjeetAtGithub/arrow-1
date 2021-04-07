@@ -37,6 +37,7 @@
 #include "arrow/dataset/file_base.h"
 #include "arrow/dataset/rados.h"
 #include "arrow/dataset/rados_utils.h"
+#include "arrow/dataset/file_parquet.h"
 #include "arrow/dataset/scanner.h"
 #include "arrow/dataset/type_fwd.h"
 #include "arrow/dataset/visibility.h"
@@ -96,26 +97,25 @@ class ARROW_DS_EXPORT DirectObjectAccess {
   explicit DirectObjectAccess(const std::shared_ptr<RadosCluster>& cluster)
       : cluster_(std::move(cluster)) {}
 
-  Status Exec(const std::string& path, const std::string& fn,
-              std::shared_ptr<librados::bufferlist>& in,
-              std::shared_ptr<librados::bufferlist>& out) {
-    struct stat dir_st;
-    if (stat(path.c_str(), &dir_st) < 0)
+  Status Stat(const std::string &path, struct stat &st) {
+    struct stat file_st;
+    if (stat(path.c_str(), &file_st) < 0)
       return Status::ExecutionError("stat returned non-zero exit code.");
+    st = file_st;
+    return Status::OK();
+  }
 
-    uint64_t inode = dir_st.st_ino;
-
+  Status Exec(uint64_t inode, const std::string& fn, ceph::bufferlist& in,
+              ceph::bufferlist& out) {
     std::stringstream ss;
     ss << std::hex << inode;
     std::string oid(ss.str() + ".00000000");
 
-    librados::bufferlist out_bl;
-    if (cluster_->ioCtx->exec(oid.c_str(), cluster_->cls_name.c_str(), fn.c_str(), *in,
-                              out_bl)) {
+    if (cluster_->ioCtx->exec(oid.c_str(), cluster_->cls_name.c_str(), fn.c_str(), in,
+                              out)) {
       return Status::ExecutionError("librados::exec returned non-zero exit code.");
     }
 
-    out = std::make_shared<librados::bufferlist>(out_bl);
     return Status::OK();
   }
 
@@ -123,7 +123,7 @@ class ARROW_DS_EXPORT DirectObjectAccess {
   std::shared_ptr<RadosCluster> cluster_;
 };
 
-class ARROW_DS_EXPORT RadosParquetFileFormat : public FileFormat {
+class ARROW_DS_EXPORT RadosParquetFileFormat : public ParquetFileFormat {
  public:
   static Result<std::shared_ptr<RadosParquetFileFormat>> Make(
       const std::string& path_to_config);

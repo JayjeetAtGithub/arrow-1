@@ -26,6 +26,8 @@
 #include "arrow/util/checked_cast.h"
 #include "arrow/util/iterator.h"
 #include "arrow/util/logging.h"
+#include "parquet/arrow/reader.h"
+#include "parquet/file_reader.h"
 
 namespace arrow {
 namespace dataset {
@@ -45,30 +47,54 @@ class RadosParquetScanTask : public ScanTask {
         doa_(std::move(doa)){}
 
   Result<RecordBatchIterator> Execute() override {
-    std::shared_ptr<librados::bufferlist> in = std::make_shared<librados::bufferlist>();
-    std::shared_ptr<librados::bufferlist> out = std::make_shared<librados::bufferlist>();
+//    std::shared_ptr<librados::bufferlist> in = std::make_shared<librados::bufferlist>();
+//    std::shared_ptr<librados::bufferlist> out = std::make_shared<librados::bufferlist>();
+//
+//    ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(options_->filter, partition_expression, options_->projector.schema(), dataset_schema, in));
+//
+//    Status s = doa_->Exec(source_.path(), "scan", in, out);
+//    if (!s.ok()) {
+//      return Status::ExecutionError(s.message());
+//    }
+//
+//    char* scanned_table_buffer = new char[out->length()];
+//    librados::bufferlist::iterator itr = out->begin();
+//    itr.copy(out->length(), scanned_table_buffer);
+//    /// copying out from the bufferist into a char pointer
+//    /// fixed the segmentation fault issue. Maybe we can use shallow copy.
+//
+//    RecordBatchVector batches;
+//    auto buffer = std::make_shared<Buffer>((uint8_t*)scanned_table_buffer, out->length());
+//    auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
+//    ARROW_ASSIGN_OR_RAISE(auto rb_reader,
+//                          arrow::ipc::RecordBatchStreamReader::Open(buffer_reader));
+//    ARROW_RETURN_NOT_OK(rb_reader->ReadAll(&batches));
+//    return MakeVectorIterator(batches);
 
-    ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(
-        options_->filter, partition_expression, options_->projector.schema(), dataset_schema, in));
 
-    Status s = doa_->Exec(source_.path(), "scan", in, out);
+    ceph::bufferlist* in = new ceph::bufferlist();
+    ceph::bufferlist* out = new ceph::bufferlist();
+
+    Status s;
+    struct stat st;
+    s = doa_->Stat(source_.path(), st);
     if (!s.ok()) {
-      return Status::ExecutionError(s.message());
+        return Status::Invalid(s.message());
     }
 
-    char* scanned_table_buffer = new char[out->length()];
-    librados::bufferlist::iterator itr = out->begin();
-    itr.copy(out->length(), scanned_table_buffer);
-    /// copying out from the bufferist into a char pointer
-    /// fixed the segmentation fault issue. Maybe we can use shallow copy.
+    ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(options_->filter, partition_expression, options_->projector.schema(), dataset_schema, st.st_size, *in));
+
+    s = doa_->Exec(st.st_ino, "scan_op", *in, *out);
+    if (!s.ok()) {
+        return Status::ExecutionError(s.message());
+    }
 
     RecordBatchVector batches;
-    auto buffer = std::make_shared<Buffer>((uint8_t*)scanned_table_buffer, out->length());
+    auto buffer = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
     auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
     ARROW_ASSIGN_OR_RAISE(auto rb_reader,
                           arrow::ipc::RecordBatchStreamReader::Open(buffer_reader));
-    ARROW_RETURN_NOT_OK(rb_reader->ReadAll(&batches));
-    return MakeVectorIterator(batches);
+    return IteratorFromReader(rb_reader);
   }
 
   const bool bypass_fap_scantask;
@@ -97,16 +123,20 @@ RadosParquetFileFormat::RadosParquetFileFormat(const std::string& path_to_config
 
 Result<std::shared_ptr<Schema>> RadosParquetFileFormat::Inspect(
     const FileSource& source) const {
-  std::shared_ptr<librados::bufferlist> in = std::make_shared<librados::bufferlist>();
-  std::shared_ptr<librados::bufferlist> out = std::make_shared<librados::bufferlist>();
-
-  Status s = doa_->Exec(source.path(), "read_schema", in, out);
-  if (!s.ok()) return Status::ExecutionError(s.message());
-
-  std::vector<std::shared_ptr<Schema>> schemas;
-  ipc::DictionaryMemo empty_memo;
-  io::BufferReader schema_reader((uint8_t*)out->c_str(), out->length());
-  ARROW_ASSIGN_OR_RAISE(auto schema, ipc::ReadSchema(&schema_reader, &empty_memo));
+//  std::shared_ptr<librados::bufferlist> in = std::make_shared<librados::bufferlist>();
+//  std::shared_ptr<librados::bufferlist> out = std::make_shared<librados::bufferlist>();
+//
+//  Status s = doa_->Exec(source.path(), "read_schema", in, out);
+//  if (!s.ok()) return Status::ExecutionError(s.message());
+//
+//  std::vector<std::shared_ptr<Schema>> schemas;
+//  ipc::DictionaryMemo empty_memo;
+//  io::BufferReader schema_reader((uint8_t*)out->c_str(), out->length());
+//  ARROW_ASSIGN_OR_RAISE(auto schema, ipc::ReadSchema(&schema_reader, &empty_memo));
+//  return schema;
+  ARROW_ASSIGN_OR_RAISE(auto reader, GetReader(source));
+  std::shared_ptr<Schema> schema;
+  RETURN_NOT_OK(reader->GetSchema(&schema));
   return schema;
 }
 
