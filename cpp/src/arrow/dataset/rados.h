@@ -116,7 +116,7 @@ public:
   ~RadosWrapper() { delete cluster; }
 
   inline int init2(const char* const name, const char* const clustername, uint64_t flags) override {
-    this->cluster->init2(name, clustername, flags);
+    return this->cluster->init2(name, clustername, flags);
   }
   inline int ioctx_create(const char* name, IoCtxInterface* pioctx) override {
     librados::IoCtx ioCtx;
@@ -134,7 +134,7 @@ public:
   }
 
   inline void shutdown() override {
-    return this->cluster->shutdown();
+    this->cluster->shutdown();
   }
 
 private:
