@@ -107,7 +107,7 @@ class ARROW_DS_EXPORT DirectObjectAccess {
 
       int tmp = cluster_->ioCtx->exec(oid.c_str(), cluster_->cls_name.c_str(), fn.c_str(), in, out);
       if (tmp != 0)
-        return Status::ExecutionError("librados::exec (inode=" << std::to_string(inode) << ", oid="<< oid <<", fn=" << fn << ", cls_name=" << cluster_->cls_name << ") returned non-zero exit code: " << std::to_string(tmp));
+        return Status::ExecutionError("librados::exec (inode=" + std::to_string(inode) + ", oid=" + oid + ", fn=" + fn + ", cls_name=" + cluster_->cls_name + ") returned non-zero exit code: " + std::to_string(tmp));
       return Status::OK();
     }
 
