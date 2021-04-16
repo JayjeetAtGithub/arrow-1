@@ -20,6 +20,6 @@ includedir=/usr/local/include
 
 Name: Apache Arrow Dataset
 Description: Apache Arrow Dataset provides an API to read and write semantic datasets stored in different locations and formats.
-Version: 3.0.0
+Version: 4.0.0-SNAPSHOT
 Requires: arrow parquet
 Libs: -L${libdir} -larrow_dataset

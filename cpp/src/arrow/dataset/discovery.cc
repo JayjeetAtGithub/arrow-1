@@ -153,6 +153,25 @@ Result<std::shared_ptr<DatasetFactory>> FileSystemDatasetFactory::Make(
                                    std::move(format), std::move(options)));
 }
 
+// Imported from 3.0.0-RADOS
+Result<std::shared_ptr<DatasetFactory>> FileSystemDatasetFactory::Make(
+    std::string uri,
+    int64_t start_offset,
+    int64_t length,
+    std::shared_ptr<FileFormat> format,
+    FileSystemFactoryOptions options) {
+  std::string internal_path;
+  ARROW_ASSIGN_OR_RAISE(std::shared_ptr<fs::FileSystem> filesystem,
+                        arrow::fs::FileSystemFromUri(uri, &internal_path))
+  ARROW_ASSIGN_OR_RAISE(fs::FileInfo file_info, filesystem->GetFileInfo(internal_path))
+//  auto sources = std::vector<FileSource>();
+//  sources.push_back(FileSource(file_info.path(), filesystem, start_offset, length));
+// TODO: Somehow pass start_offset, length
+  return std::shared_ptr<DatasetFactory>(
+      new FileSystemDatasetFactory(
+              {file_info},std::move(filesystem), std::move(format), std::move(options)));
+}
+
 bool StartsWithAnyOf(const std::string& path, const std::vector<std::string>& prefixes) {
   if (prefixes.empty()) {
     return false;

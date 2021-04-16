@@ -37,6 +37,8 @@
 
 #include "org_apache_arrow_dataset_file_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_JniWrapper.h"
+#include "org_apache_arrow_dataset_rados_JniWrapper.h"
+
 
 static jclass illegal_access_exception_class;
 static jclass illegal_argument_exception_class;
@@ -672,18 +674,16 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeSingleFileDatasetFactory(
 }
 
 /*
- * Class:     org_apache_arrow_dataset_file_JniWrapper
+ * Class:     org_apache_arrow_dataset_rados_JniWrapper
  * Method:    makeRadosDatasetFactory
  * Signature: (Ljava/lang/String;II)J
  */
 JNIEXPORT jlong JNICALL
-Java_org_apache_arrow_dataset_file_JniWrapper_makeRadosDatasetFactory(
-    JNIEnv* env, jobject, jstring path_to_config, jstring uri, jint file_format_id,
-    jlong start_offset, jlong length) {
+Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring uri, jint file_format_id, jlong start_offset, jlong length) {
   std::shared_ptr<arrow::dataset::FileFormat> file_format;
   switch(file_format_id) {
     case FORMAT_PARQUET:
-      file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(JStringToCString(env, path_to_config));
+      file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name));
       break;
     default:
       const std::string err = "RadosDatasetFactory is not capable yet of reading given fileformat: fileformat="+std::to_string(file_format_id);

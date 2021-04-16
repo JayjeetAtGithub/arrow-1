@@ -216,6 +216,7 @@ class ARROW_DS_EXPORT FileSystemDatasetFactory : public DatasetFactory {
       std::shared_ptr<fs::FileSystem> filesystem, fs::FileSelector selector,
       std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options);
 
+  //TODO: Imported from 3.0.0-rebase
 /// \brief Build a FileSystemDatasetFactory from an uri including filesystem
 /// information.
 ///
@@ -238,14 +239,14 @@ class ARROW_DS_EXPORT FileSystemDatasetFactory : public DatasetFactory {
       std::shared_ptr<fs::FileSystem> filesystem, const std::vector<fs::FileInfo>& files,
       std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options);
 
-  FileSystemDatasetFactory(std::vector<FileSource> files,
+  FileSystemDatasetFactory(std::vector<fs::FileInfo> files,
                            std::shared_ptr<fs::FileSystem> filesystem,
                            std::shared_ptr<FileFormat> format,
                            FileSystemFactoryOptions options);
 
   Result<std::shared_ptr<Schema>> PartitionSchema();
 
-  std::vector<FileSource> files_;
+  std::vector<fs::FileInfo> files_;
   std::shared_ptr<fs::FileSystem> fs_;
   std::shared_ptr<FileFormat> format_;
   FileSystemFactoryOptions options_;

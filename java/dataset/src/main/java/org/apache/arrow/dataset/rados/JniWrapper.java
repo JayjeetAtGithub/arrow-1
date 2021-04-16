@@ -17,7 +17,6 @@
 
 package org.apache.arrow.dataset.rados;
 
-import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.dataset.jni.JniLoader;
 
 /**
@@ -38,13 +37,15 @@ public class JniWrapper {
   /**
    * Creates dataset factory for reading file
    * @param path_to_config full path to config for Ceph remote
+   * @param data_pool pool name to use
+   * @param user_name username on ceph cluster
+   * @param cluster_name cluster name on ceph cluster
    * @param path full path of the file on the Ceph remote
    * @param fileFormat format ID
    * @param startOffset random read position. -1 for reading from start.
    * @param length reading length. -1 for reading all bytes of the file.
-   * @return
+   * @return identifier for native datasetfactory
    */
-  public native long makeRadosDatasetFactory(String path_to_config, 
-    String path, int fileFormat, long startOffset, long length);
+  public native long makeRadosDatasetFactory(String path_to_config, String data_pool, String user_name, String cluster_name, String path, int fileFormat, long startOffset, long length);
 
 }
