@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <arrow/type.h>
 #include <gtest/gtest.h>
 #include <math.h>
 #include <time.h>
@@ -537,4 +538,47 @@ TEST_F(TestProjector, TestMonthsBetween) {
   EXPECT_ARROW_ARRAY_EQUALS(exp_output, outputs.at(0));
 }
 
+TEST_F(TestProjector, TestCastToUTF8) {
+  // schema for input fields
+  auto field_date32 = field("f_date32", arrow::date32());
+  auto node_date32 = TreeExprBuilder::MakeField(field_date32);
+  auto schema = arrow::schema({field_date32});
+
+  // output fields
+  auto field_0 = field("date32_str", arrow::utf8());
+
+  // Build expression
+  auto int64_literal = TreeExprBuilder::MakeLiteral(10L);
+  auto func0 = TreeExprBuilder::MakeFunction("castVARCHAR", {node_date32, int64_literal},
+                                             arrow::utf8());
+  auto expr0 = TreeExprBuilder::MakeExpression(func0, field_0);
+  std::shared_ptr<Projector> projector;
+  auto status = Projector::Make(schema, {expr0}, TestConfiguration(), &projector);
+  EXPECT_TRUE(status.ok()) << status.message();
+
+  // Create a row-batch with some sample data
+  int num_records = 4;
+  time_t epoch = Epoch();
+  auto validity = {true, true, true, true};
+  std::vector<int32_t> field0_data = {DaysSince(epoch, 2000, 1, 1, 5, 0, 0, 0),
+                                      DaysSince(epoch, 1999, 12, 31, 5, 0, 0, 0),
+                                      DaysSince(epoch, 2015, 6, 30, 20, 0, 0, 0),
+                                      DaysSince(epoch, 2015, 7, 1, 20, 0, 0, 0)};
+  auto array0 =
+      MakeArrowTypeArray<arrow::Date32Type, int32_t>(date32(), field0_data, validity);
+  // expected output
+  auto exp = MakeArrowArray<arrow::StringType, std::string>(
+      {"2000-01-01", "1999-12-31", "2015-06-30", "2015-07-01"}, {true, true, true, true});
+
+  // prepare input record batch
+  auto in_batch = arrow::RecordBatch::Make(schema, num_records, {array0});
+
+  // Evaluate expression
+  arrow::ArrayVector outputs;
+  status = projector->Evaluate(*in_batch, pool_, &outputs);
+  EXPECT_TRUE(status.ok()) << status.message();
+
+  // Validate results
+  EXPECT_ARROW_ARRAY_EQUALS(exp, outputs.at(0));
+}
 }  // namespace gandiva

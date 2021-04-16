@@ -586,6 +586,49 @@ gdv_date64 castDATE_utf8(int64_t context, const char* input, gdv_int32 length) {
       .count();
 }
 
+const char* castVARCHAR_date32_int64(gdv_int64 context, gdv_date32 in_day,
+                                     gdv_int64 length, gdv_int32* out_len) {
+  gdv_timestamp in = castDATE_date32(in_day);
+  gdv_int64 year = extractYear_timestamp(in);
+  gdv_int64 month = extractMonth_timestamp(in);
+  gdv_int64 day = extractDay_timestamp(in);
+
+  static const int kDateStringLen = 11;
+  const int char_buffer_length = kDateStringLen + 1;  // snprintf adds \0
+  char char_buffer[char_buffer_length];
+
+  // yyyy-MM-dd hh:mm:ss.sss
+  int res = snprintf(char_buffer, char_buffer_length,
+                     "%04" PRId64 "-%02" PRId64 "-%02" PRId64, year, month, day);
+  if (res < 0) {
+    gdv_fn_context_set_error_msg(context, "Could not format the date");
+    return "";
+  }
+
+  *out_len = static_cast<gdv_int32>(length);
+  if (*out_len > kDateStringLen) {
+    *out_len = kDateStringLen;
+  }
+
+  if (*out_len <= 0) {
+    if (*out_len < 0) {
+      gdv_fn_context_set_error_msg(context, "Length of output string cannot be negative");
+    }
+    *out_len = 0;
+    return "";
+  }
+
+  char* ret = reinterpret_cast<char*>(gdv_fn_context_arena_malloc(context, *out_len));
+  if (ret == nullptr) {
+    gdv_fn_context_set_error_msg(context, "Could not allocate memory for output string");
+    *out_len = 0;
+    return "";
+  }
+
+  memcpy(ret, char_buffer, *out_len);
+  return ret;
+}
+
 /*
  * Input consists of mandatory and optional fields.
  * Mandatory fields are year, month and day.

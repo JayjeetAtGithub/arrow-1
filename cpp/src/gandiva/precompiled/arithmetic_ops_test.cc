@@ -137,4 +137,18 @@ TEST(TestArithmeticOps, TestBitwiseOps) {
   EXPECT_EQ(bitwise_not_int64(0x0000000000000000), 0xFFFFFFFFFFFFFFFF);
 }
 
+TEST(TestArithmeticOps, TestCastVarhcar) {
+  gandiva::ExecutionContext ctx;
+  uint64_t ctx_ptr = reinterpret_cast<gdv_int64>(&ctx);
+  gdv_int32 out_len = 0;
+
+  const char* out_str = castVARCHAR_int32_int64(ctx_ptr, 88, 11L, &out_len);
+  EXPECT_EQ(std::string(out_str, out_len), "88");
+  EXPECT_FALSE(ctx.has_error());
+
+  out_str = castVARCHAR_float64_int64(ctx_ptr, 8.712128f, 21L, &out_len);
+  EXPECT_EQ(std::string(out_str, out_len), "8.712128");
+  EXPECT_FALSE(ctx.has_error());
+}
+
 }  // namespace gandiva

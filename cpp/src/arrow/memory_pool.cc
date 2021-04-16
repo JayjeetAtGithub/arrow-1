@@ -23,6 +23,7 @@
 #include <iostream>   // IWYU pragma: keep
 #include <limits>
 #include <memory>
+#include <mutex>
 
 #include "arrow/result.h"
 #include "arrow/status.h"
@@ -629,6 +630,144 @@ std::vector<std::string> SupportedMemoryBackendNames() {
     supported.push_back(backend.name);
   }
   return supported;
+}
+
+ReservationListener::~ReservationListener() {}
+
+ReservationListener::ReservationListener() {}
+
+class ReservationListenableMemoryPool::ReservationListenableMemoryPoolImpl {
+ public:
+  explicit ReservationListenableMemoryPoolImpl(
+      MemoryPool* pool, std::shared_ptr<ReservationListener> listener, int64_t block_size)
+      : pool_(pool),
+        listener_(listener),
+        block_size_(block_size),
+        blocks_reserved_(0),
+        bytes_reserved_(0) {}
+
+  Status Allocate(int64_t size, uint8_t** out) {
+    RETURN_NOT_OK(UpdateReservation(size));
+    Status error = pool_->Allocate(size, out);
+    if (!error.ok()) {
+      RETURN_NOT_OK(UpdateReservation(-size));
+      return error;
+    }
+    return Status::OK();
+  }
+
+  Status Reallocate(int64_t old_size, int64_t new_size, uint8_t** ptr) {
+    bool reserved = false;
+    int64_t diff = new_size - old_size;
+    if (new_size >= old_size) {
+      RETURN_NOT_OK(UpdateReservation(diff));
+      reserved = true;
+    }
+    Status error = pool_->Reallocate(old_size, new_size, ptr);
+    if (!error.ok()) {
+      if (reserved) {
+        RETURN_NOT_OK(UpdateReservation(-diff));
+      }
+      return error;
+    }
+    if (!reserved) {
+      RETURN_NOT_OK(UpdateReservation(diff));
+    }
+    return Status::OK();
+  }
+
+  void Free(uint8_t* buffer, int64_t size) {
+    pool_->Free(buffer, size);
+    // fixme currently method ::Free doesn't allow Status return
+    Status s = UpdateReservation(-size);
+    if (!s.ok()) {
+      ARROW_LOG(FATAL) << "Failed to update reservation while freeing bytes: "
+                       << s.message();
+      return;
+    }
+  }
+
+  Status UpdateReservation(int64_t diff) {
+    int64_t granted = Reserve(diff);
+    if (granted == 0) {
+      return Status::OK();
+    }
+    if (granted < 0) {
+      RETURN_NOT_OK(listener_->OnRelease(-granted));
+      return Status::OK();
+    }
+    RETURN_NOT_OK(listener_->OnReservation(granted));
+    return Status::OK();
+  }
+
+  int64_t Reserve(int64_t diff) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bytes_reserved_ += diff;
+    int64_t new_block_count;
+    if (bytes_reserved_ == 0) {
+      new_block_count = 0;
+    } else {
+      new_block_count = (bytes_reserved_ - 1) / block_size_ + 1;
+    }
+    int64_t bytes_granted = (new_block_count - blocks_reserved_) * block_size_;
+    blocks_reserved_ = new_block_count;
+    return bytes_granted;
+  }
+
+  int64_t bytes_allocated() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return bytes_reserved_;
+  }
+
+  int64_t max_memory() { return pool_->max_memory(); }
+
+  std::string backend_name() { return pool_->backend_name(); }
+
+  std::shared_ptr<ReservationListener> get_listener() { return listener_; }
+
+ private:
+  MemoryPool* pool_;
+  std::shared_ptr<ReservationListener> listener_;
+  int64_t block_size_;
+  int64_t blocks_reserved_;
+  int64_t bytes_reserved_;
+  std::mutex mutex_;
+};
+
+ReservationListenableMemoryPool::~ReservationListenableMemoryPool() {}
+
+ReservationListenableMemoryPool::ReservationListenableMemoryPool(
+    MemoryPool* pool, std::shared_ptr<ReservationListener> listener, int64_t block_size) {
+  impl_.reset(new ReservationListenableMemoryPoolImpl(pool, listener, block_size));
+}
+
+Status ReservationListenableMemoryPool::Allocate(int64_t size, uint8_t** out) {
+  return impl_->Allocate(size, out);
+}
+
+Status ReservationListenableMemoryPool::Reallocate(int64_t old_size, int64_t new_size,
+                                                   uint8_t** ptr) {
+  return impl_->Reallocate(old_size, new_size, ptr);
+}
+
+void ReservationListenableMemoryPool::Free(uint8_t* buffer, int64_t size) {
+  return impl_->Free(buffer, size);
+}
+
+int64_t ReservationListenableMemoryPool::bytes_allocated() const {
+  return impl_->bytes_allocated();
+}
+
+int64_t ReservationListenableMemoryPool::max_memory() const {
+  return impl_->max_memory();
+}
+
+std::string ReservationListenableMemoryPool::backend_name() const {
+  return impl_->backend_name();
+}
+
+std::shared_ptr<ReservationListener> ReservationListenableMemoryPool::get_listener() {
+  return impl_->get_listener();
 }
 
 }  // namespace arrow

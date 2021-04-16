@@ -100,6 +100,21 @@ class FilterAndProjectScanTask : public ScanTask {
   RecordBatchProjector projector_;
 };
 
+class ProjectScanTask : public ScanTask {
+ public:
+  explicit ProjectScanTask(std::shared_ptr<ScanTask> task)
+      : ScanTask(task->options(), task->context()), task_(std::move(task)) {}
+
+  Result<RecordBatchIterator> Execute() override {
+    ARROW_ASSIGN_OR_RAISE(auto it, task_->Execute());
+    return ProjectRecordBatch(std::move(it), &task_->options()->projector,
+                              context_->pool);
+  }
+
+ private:
+  std::shared_ptr<ScanTask> task_;
+};
+
 /// \brief GetScanTaskIterator transforms an Iterator<Fragment> in a
 /// flattened Iterator<ScanTask>.
 inline Result<ScanTaskIterator> GetScanTaskIterator(

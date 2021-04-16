@@ -104,6 +104,23 @@ static parquet::ReaderProperties MakeReaderProperties(
   return properties;
 }
 
+void SetDictionaryColumns(std::unique_ptr<parquet::ParquetFileReader> &reader,
+                          parquet::ArrowReaderProperties &properties,
+                          const std::unordered_set<std::string> &dict_columns) {
+  if (dict_columns.empty()) {
+    // default: dict-encode all columns
+    int num_columns = reader->metadata()->num_columns();
+    for (int i = 0; i < num_columns; i++) {
+      properties.set_read_dictionary(i, true);
+    }
+    return;
+  }
+  for (const std::string &name : dict_columns) {
+    auto column_index = reader->metadata()->schema()->ColumnIndex(name);
+    properties.set_read_dictionary(column_index, true);
+  }
+}
+
 static parquet::ArrowReaderProperties MakeArrowReaderProperties(
     const ParquetFileFormat& format, const parquet::FileMetaData& metadata) {
   parquet::ArrowReaderProperties properties(/* use_threads = */ false);
@@ -269,6 +286,9 @@ Result<std::unique_ptr<parquet::arrow::FileReader>> ParquetFileFormat::GetReader
   std::shared_ptr<parquet::FileMetaData> metadata = reader->metadata();
   auto arrow_properties = MakeArrowReaderProperties(*this, *metadata);
 
+  std::unordered_set<std::string> dict_columns = reader_options.dict_columns;
+  SetDictionaryColumns(reader, arrow_properties, dict_columns);
+
   if (options) {
     arrow_properties.set_batch_size(options->batch_size);
   }
@@ -289,40 +309,74 @@ Result<ScanTaskIterator> ParquetFileFormat::ScanFile(std::shared_ptr<ScanOptions
   auto* parquet_fragment = checked_cast<ParquetFileFragment*>(fragment);
   std::vector<int> row_groups;
 
-  bool pre_filtered = false;
-  auto MakeEmpty = [] { return MakeEmptyIterator<std::shared_ptr<ScanTask>>(); };
-
-  // If RowGroup metadata is cached completely we can pre-filter RowGroups before opening
-  // a FileReader, potentially avoiding IO altogether if all RowGroups are excluded due to
-  // prior statistics knowledge. In the case where a RowGroup doesn't have statistics
-  // metdata, it will not be excluded.
-  if (parquet_fragment->metadata() != nullptr) {
-    ARROW_ASSIGN_OR_RAISE(row_groups, parquet_fragment->FilterRowGroups(options->filter));
-
-    pre_filtered = true;
-    if (row_groups.empty()) MakeEmpty();
-  }
+// FIXME REBASE: disable this feature temporarily 2021/01/26 hongze
+//
+//  // If RowGroup metadata is cached completely we can pre-filter RowGroups before opening
+//  // a FileReader, potentially avoiding IO altogether if all RowGroups are excluded due to
+//  // prior statistics knowledge. In the case where a RowGroup doesn't have statistics
+//  // metdata, it will not be excluded.
+//  if (parquet_fragment->metadata() != nullptr) {
+//    ARROW_ASSIGN_OR_RAISE(row_groups, parquet_fragment->FilterRowGroups(options->filter));
+//
+//    pre_filtered = true;
+//    if (row_groups.empty()) MakeEmpty();
+//  }
 
   // Open the reader and pay the real IO cost.
-  ARROW_ASSIGN_OR_RAISE(std::shared_ptr<parquet::arrow::FileReader> reader,
-                        GetReader(fragment->source(), options.get(), context.get()));
 
+
+  FileSource source = fragment->source();
+  ARROW_ASSIGN_OR_RAISE(std::shared_ptr<parquet::arrow::FileReader> file_reader,
+                        GetReader(source, options.get(), context.get()));
+
+  auto reader = file_reader->parquet_reader();
   // Ensure that parquet_fragment has FileMetaData
-  RETURN_NOT_OK(parquet_fragment->EnsureCompleteMetadata(reader.get()));
+  RETURN_NOT_OK(parquet_fragment->EnsureCompleteMetadata(file_reader.get()));
 
-  if (!pre_filtered) {
-    // row groups were not already filtered; do this now
-    ARROW_ASSIGN_OR_RAISE(row_groups, parquet_fragment->FilterRowGroups(options->filter));
+  ARROW_ASSIGN_OR_RAISE(row_groups, parquet_fragment->FilterRowGroups(options->filter));
 
-    if (row_groups.empty()) MakeEmpty();
+  for (int i : row_groups) {
+    if (i >= reader->metadata()->num_row_groups()) {
+      return Status::IndexError("trying to scan row group ", i, " but ", source.path(),
+                                " only has ", reader->metadata()->num_row_groups(),
+                                " row groups");
+    }
+  }
+  if (source.start_offset() != -1L) {
+    // random read
+    std::vector<int> random_read_selected_row_groups = std::vector<int>();
+    for (int i : row_groups) {
+      std::shared_ptr<parquet::ColumnChunkMetaData> leading_cc =
+          reader->RowGroup(i)->metadata()->ColumnChunk(0);
+      int64_t r_start = leading_cc->data_page_offset();
+      if (leading_cc->has_dictionary_page() &&
+          r_start > leading_cc->dictionary_page_offset()) {
+        r_start = leading_cc->dictionary_page_offset();
+      }
+      int64_t r_bytes = 0L;
+      for (int col_id = 0; col_id < reader->RowGroup(i)->metadata()->num_columns();
+           col_id++) {
+        r_bytes += reader->
+            RowGroup(i)->metadata()->ColumnChunk(col_id)->total_compressed_size();
+      }
+      int64_t midpoint = r_start + r_bytes / 2;
+      if (midpoint >= source.start_offset()
+          && midpoint < (source.start_offset() + source.length())) {
+        random_read_selected_row_groups.push_back(i);
+      }
+    }
+    row_groups = random_read_selected_row_groups;
+  }
+  if (row_groups.empty()) {
+    return arrow::MakeEmptyIterator<std::shared_ptr<ScanTask>>();
   }
 
-  auto column_projection = InferColumnProjection(*reader, *options);
+  auto column_projection = InferColumnProjection(*file_reader, *options);
   ScanTaskVector tasks(row_groups.size());
 
   for (size_t i = 0; i < row_groups.size(); ++i) {
-    tasks[i] = std::make_shared<ParquetScanTask>(row_groups[i], column_projection, reader,
-                                                 options, context);
+    tasks[i] = std::make_shared<ParquetScanTask>(row_groups[i], column_projection,
+        file_reader, options, context);
   }
 
   return MakeVectorIterator(std::move(tasks));

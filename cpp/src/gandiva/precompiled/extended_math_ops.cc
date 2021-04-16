@@ -73,6 +73,24 @@ ENUMERIC_TYPES_UNARY(LOG, float64)
 
 ENUMERIC_TYPES_UNARY(LOG10, float64)
 
+// abs
+#define ABS_TYPES_UNARY(IN_TYPE, OUT_TYPE)         \
+  FORCE_INLINE                                     \
+  gdv_##OUT_TYPE abs_##IN_TYPE(gdv_##IN_TYPE in) { \
+    return static_cast<gdv_##OUT_TYPE>(abs((in))); \
+  }
+
+#define ABS_FTYPES_UNARY(IN_TYPE, OUT_TYPE)         \
+  FORCE_INLINE                                      \
+  gdv_##OUT_TYPE abs_##IN_TYPE(gdv_##IN_TYPE in) {  \
+    return static_cast<gdv_##OUT_TYPE>(fabs((in))); \
+  }
+
+ABS_TYPES_UNARY(int32, uint32)
+ABS_TYPES_UNARY(int64, uint64)
+ABS_FTYPES_UNARY(float32, float32)
+ABS_FTYPES_UNARY(float64, float64)
+
 FORCE_INLINE
 void set_error_for_logbase(int64_t execution_context, double base) {
   char const* prefix = "divide by zero error with log of base";

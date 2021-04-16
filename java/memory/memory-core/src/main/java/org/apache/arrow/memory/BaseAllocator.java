@@ -286,6 +286,15 @@ abstract class BaseAllocator extends Accountant implements BufferAllocator {
     }
   }
 
+  @Override
+  public void release(AllocationManager allocationManager) {
+    long size = allocationManager.getSize();
+    releaseBytes(size);
+    // free the memory chunk associated with the allocation manager
+    allocationManager.release0();
+    getListener().onRelease(size);
+  }
+
   /**
    * Used by usual allocation as well as for allocating a pre-reserved buffer.
    * Skips the typical accounting associated with creating a new buffer.

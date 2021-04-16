@@ -59,6 +59,11 @@ std::vector<NativeFunction> GetMathOpsFunctionRegistry() {
       BINARY_SAFE_NULL_NEVER_BOOL_FN(is_distinct_from, {}),
       BINARY_SAFE_NULL_NEVER_BOOL_FN(is_not_distinct_from, {}),
 
+      UNARY_SAFE_NULL_IF_NULL(abs, {}, int32, uint32),
+      UNARY_SAFE_NULL_IF_NULL(abs, {}, int64, uint64),
+      UNARY_SAFE_NULL_IF_NULL(abs, {}, float32, float32),
+      UNARY_SAFE_NULL_IF_NULL(abs, {}, float64, float64),
+
       // decimal functions
       UNARY_SAFE_NULL_IF_NULL(abs, {}, decimal128, decimal128),
       UNARY_SAFE_NULL_IF_NULL(ceil, {}, decimal128, decimal128),

@@ -37,7 +37,18 @@ std::vector<NativeFunction> GetArithmeticFunctionRegistry() {
   static std::vector<NativeFunction> arithmetic_fn_registry_ = {
       UNARY_SAFE_NULL_IF_NULL(not, {}, boolean, boolean),
       UNARY_SAFE_NULL_IF_NULL(castBIGINT, {}, int32, int64),
+      UNARY_SAFE_NULL_IF_NULL(castBIGINT, {}, float32, int64),
+      UNARY_SAFE_NULL_IF_NULL(castBIGINT, {}, float64, int64),
+      UNARY_SAFE_NULL_IF_NULL(castBIGINT, {}, date64, int64),
+      UNARY_SAFE_NULL_IF_NULL(castINT, {}, int8, int32),
+      UNARY_SAFE_NULL_IF_NULL(castINT, {}, int16, int32),
       UNARY_SAFE_NULL_IF_NULL(castINT, {}, int64, int32),
+      UNARY_SAFE_NULL_IF_NULL(castINT, {}, date32, int32),
+      UNARY_SAFE_NULL_IF_NULL(castINT, {}, float32, int32),
+      UNARY_SAFE_NULL_IF_NULL(castINT, {}, float64, int32),
+      UNARY_SAFE_NULL_IF_NULL(castBYTE, {}, int16, int8),
+      UNARY_SAFE_NULL_IF_NULL(castBYTE, {}, int32, int8),
+      UNARY_SAFE_NULL_IF_NULL(castBYTE, {}, int64, int8),
       UNARY_SAFE_NULL_IF_NULL(castBIGINT, {}, decimal128, int64),
 
       // cast to float32
@@ -55,6 +66,10 @@ std::vector<NativeFunction> GetArithmeticFunctionRegistry() {
       UNARY_SAFE_NULL_IF_NULL(castDECIMAL, {}, float64, decimal128),
       UNARY_SAFE_NULL_IF_NULL(castDECIMAL, {}, decimal128, decimal128),
       UNARY_UNSAFE_NULL_IF_NULL(castDECIMAL, {}, utf8, decimal128),
+
+      // isNaN
+      UNARY_SAFE_NULL_IF_NULL(isNaN, {}, float32, boolean),
+      UNARY_SAFE_NULL_IF_NULL(isNaN, {}, float64, boolean),
 
       NativeFunction("castDECIMALNullOnOverflow", {}, DataTypeVector{decimal128()},
                      decimal128(), kResultNullInternal,
@@ -96,6 +111,11 @@ std::vector<NativeFunction> GetArithmeticFunctionRegistry() {
       UNARY_SAFE_NULL_IF_NULL(round, {}, int64, int64),
       BINARY_GENERIC_SAFE_NULL_IF_NULL(round, {}, int32, int32, int32),
       BINARY_GENERIC_SAFE_NULL_IF_NULL(round, {}, int64, int32, int64),
+      // bitwise functions
+      BINARY_GENERIC_SAFE_NULL_IF_NULL(shift_left, {}, int32, int32, int32),
+      BINARY_GENERIC_SAFE_NULL_IF_NULL(shift_left, {}, int64, int32, int64),
+      BINARY_GENERIC_SAFE_NULL_IF_NULL(shift_right, {}, int32, int32, int32),
+      BINARY_GENERIC_SAFE_NULL_IF_NULL(shift_right, {}, int64, int32, int64),
 
       // compare functions
       BINARY_RELATIONAL_BOOL_FN(equal, ({"eq", "same"})),
@@ -103,7 +123,15 @@ std::vector<NativeFunction> GetArithmeticFunctionRegistry() {
       BINARY_RELATIONAL_BOOL_DATE_FN(less_than, {}),
       BINARY_RELATIONAL_BOOL_DATE_FN(less_than_or_equal_to, {}),
       BINARY_RELATIONAL_BOOL_DATE_FN(greater_than, {}),
-      BINARY_RELATIONAL_BOOL_DATE_FN(greater_than_or_equal_to, {})};
+      BINARY_RELATIONAL_BOOL_DATE_FN(greater_than_or_equal_to, {}),
+
+      // compare functions with nan
+      BINARY_RELATIONAL_BOOL_FN(equal_with_nan, ({"eq_with_nan", "same_with_nan"})),
+      BINARY_RELATIONAL_BOOL_FN(not_equal_with_nan, {}),
+      BINARY_RELATIONAL_BOOL_DATE_FN(less_than_with_nan, {}),
+      BINARY_RELATIONAL_BOOL_DATE_FN(less_than_or_equal_to_with_nan, {}),
+      BINARY_RELATIONAL_BOOL_DATE_FN(greater_than_with_nan, {}),
+      BINARY_RELATIONAL_BOOL_DATE_FN(greater_than_or_equal_to_with_nan, {})};
 
   return arithmetic_fn_registry_;
 }
