@@ -263,8 +263,6 @@ Result<std::shared_ptr<Dataset>> FileSystemDatasetFactory::Finish(FinishOptions 
 }
 
 
-
-//TODO: IMPLEMENT from here
 RandomAccessDatasetFactory::RandomAccessDatasetFactory(
     std::vector<FileSource> files, std::shared_ptr<fs::FileSystem> filesystem,
     std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options)
@@ -273,25 +271,6 @@ RandomAccessDatasetFactory::RandomAccessDatasetFactory(
       format_(std::move(format)),
       options_(std::move(options)) {}
 
-Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
-    std::shared_ptr<fs::FileSystem> filesystem, const std::vector<std::string>& paths,
-    std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options) {
-  std::vector<FileSource> filtered_files;
-  for (const auto& path : paths) {
-    if (options.exclude_invalid_files) {
-      ARROW_ASSIGN_OR_RAISE(auto supported,
-                            format->IsSupported(FileSource(path, filesystem)));
-      if (!supported) {
-        continue;
-      }
-    }
-    filtered_files.emplace_back(path, filesystem);
-  }
-
-  return std::shared_ptr<DatasetFactory>(
-      new RandomAccessDatasetFactory(std::move(filtered_files), std::move(filesystem),
-                                   std::move(format), std::move(options)));
-}
 
 Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
     std::shared_ptr<fs::FileSystem> filesystem, const std::vector<fs::FileInfo>& files,
@@ -299,19 +278,14 @@ Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
   std::vector<FileSource> filtered_files;
   for (const auto& info : files) {
     if (options.exclude_invalid_files) {
-      ARROW_ASSIGN_OR_RAISE(auto supported,
-                            format->IsSupported(FileSource(info, filesystem)));
-      if (!supported) {
+      ARROW_ASSIGN_OR_RAISE(auto supported,format->IsSupported(FileSource(info, filesystem)));
+      if (!supported)
         continue;
-      }
     }
-
     filtered_files.emplace_back(info, filesystem);
   }
 
-  return std::shared_ptr<DatasetFactory>(
-      new RandomAccessDatasetFactory(std::move(filtered_files), std::move(filesystem),
-                                   std::move(format), std::move(options)));
+  return std::shared_ptr<DatasetFactory>(new RandomAccessDatasetFactory(std::move(filtered_files), std::move(filesystem),std::move(format), std::move(options)));
 }
 
 Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
@@ -325,48 +299,6 @@ Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
                           arrow::fs::FileSystemFromUri(uri, &internal_path))
     ARROW_ASSIGN_OR_RAISE(fs::FileInfo file_info, filesystem->GetFileInfo(internal_path))
     return std::shared_ptr<DatasetFactory>(new RandomAccessDatasetFactory({FileSource(file_info.path(), filesystem, start_offset, length)},std::move(filesystem), std::move(format), std::move(options)));
-}
-
-Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
-    std::shared_ptr<fs::FileSystem> filesystem, fs::FileSelector selector,
-    std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options) {
-  // By automatically setting the options base_dir to the selector's base_dir,
-  // we provide a better experience for user providing Partitioning that are
-  // relative to the base_dir instead of the full path.
-  if (options.partition_base_dir.empty() && !selector.base_dir.empty()) {
-    options.partition_base_dir = selector.base_dir;
-  }
-
-  ARROW_ASSIGN_OR_RAISE(selector.base_dir, filesystem->NormalizePath(selector.base_dir));
-  ARROW_ASSIGN_OR_RAISE(auto files, filesystem->GetFileInfo(selector));
-
-  // Filter out anything that's not a file or that's explicitly ignored
-  Status st;
-  auto files_end =
-      std::remove_if(files.begin(), files.end(), [&](const fs::FileInfo& info) {
-        if (!info.IsFile()) return true;
-
-        auto relative = fs::internal::RemoveAncestor(selector.base_dir, info.path());
-        if (!relative.has_value()) {
-          st = Status::Invalid("GetFileInfo() yielded path '", info.path(),
-                               "', which is outside base dir '", selector.base_dir, "'");
-          return false;
-        }
-
-        if (StartsWithAnyOf(std::string(*relative), options.selector_ignore_prefixes)) {
-          return true;
-        }
-
-        return false;
-      });
-  RETURN_NOT_OK(st);
-  files.erase(files_end, files.end());
-
-  // Sorting by path guarantees a stability sometimes needed by unit tests.
-  std::sort(files.begin(), files.end(), fs::FileInfo::ByPath());
-
-  return Make(std::move(filesystem), std::move(files), std::move(format),
-              std::move(options));
 }
 
 Result<std::vector<std::shared_ptr<Schema>>> RandomAccessDatasetFactory::InspectSchemas(

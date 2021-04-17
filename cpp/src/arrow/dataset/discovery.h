@@ -216,7 +216,6 @@ class ARROW_DS_EXPORT FileSystemDatasetFactory : public DatasetFactory {
       std::shared_ptr<fs::FileSystem> filesystem, fs::FileSelector selector,
       std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options);
 
-  //TODO: Imported from 3.0.0-rebase
 /// \brief Build a FileSystemDatasetFactory from an uri including filesystem
 /// information.
 ///
@@ -254,31 +253,7 @@ class ARROW_DS_EXPORT FileSystemDatasetFactory : public DatasetFactory {
 
 
 class ARROW_DS_EXPORT RandomAccessDatasetFactory : public DatasetFactory {
-/// \brief Build a RandomAccessDatasetFactory from an explicit list of paths.
-///
-/// \param[in] filesystem passed to FileSystemDataset
-/// \param[in] paths passed to FileSystemDataset
-/// \param[in] format passed to FileSystemDataset
-/// \param[in] options see FileSystemFactoryOptions for more information.
-static Result<std::shared_ptr<DatasetFactory>> Make(
-        std::shared_ptr<fs::FileSystem> filesystem, const std::vector<std::string>& paths,
-        std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options);
-
-/// \brief Build a FileSystemDatasetFactory from a fs::FileSelector.
-///
-/// The selector will expand to a vector of FileInfo. The expansion/crawling is performed in this function call.
-/// Thus, the finalized Dataset is working with a snapshot of the filesystem.
-///
-/// If options.partition_base_dir is not provided, it will be overwritten with selector.base_dir.
-///
-/// \param[in] filesystem passed to FileSystemDataset
-/// \param[in] selector used to crawl and search files
-/// \param[in] format passed to FileSystemDataset
-/// \param[in] options see FileSystemFactoryOptions for more information.
-static Result<std::shared_ptr<DatasetFactory>> Make(
-        std::shared_ptr<fs::FileSystem> filesystem, fs::FileSelector selector,
-        std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options);
-
+ public:
 /// \brief Build a RandomAccessDatasetFactory from an uri including filesystem information.
 /// Can specify exact file descriptor offset and read length.
 /// To read everything, set `start_offset` to `-1` and `length` to `-1`.
