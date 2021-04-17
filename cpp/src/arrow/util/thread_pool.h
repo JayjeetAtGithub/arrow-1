@@ -95,8 +95,8 @@ class ARROW_EXPORT Executor {
   Result<FutureType> Submit(TaskHints hints, Function&& func, Args&&... args) {
     auto future = FutureType::Make();
 
-    auto task = std::bind(::arrow::detail::Continue, future, std::forward<Function>(func),
-                          std::forward<Args>(args)...);
+    auto task = std::bind(::arrow::detail::ContinueFuture{}, future,
+                          std::forward<Function>(func), std::forward<Args>(args)...);
     ARROW_RETURN_NOT_OK(SpawnReal(hints, std::move(task)));
 
     return future;
@@ -142,8 +142,12 @@ class ARROW_EXPORT ThreadPool : public Executor {
   int GetCapacity() override;
 
   // Dynamically change the number of worker threads.
-  // This function returns quickly, but it may take more time before the
-  // thread count is fully adjusted.
+  //
+  // This function always returns immediately.
+  // If fewer threads are running than this number, new threads are spawned
+  // on-demand when needed for task execution.
+  // If more threads are running than this number, excess threads are reaped
+  // as soon as possible.
   Status SetCapacity(int threads);
 
   // Heuristic for the default capacity of a thread pool for CPU-bound tasks.

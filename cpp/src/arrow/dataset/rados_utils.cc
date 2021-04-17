@@ -47,7 +47,11 @@ Status CharToInt64(char* buffer, int64_t& num) {
   return Status::OK();
 }
 
-Status SerializeScanRequestToBufferlist(Expression filter, Expression part_expr, std::shared_ptr<Schema> projection_schema, std::shared_ptr<Schema> dataset_schema, int64_t file_size, ceph::bufferlist& bl) {
+Status SerializeScanRequestToBufferlist(Expression filter, Expression part_expr,
+                                        std::shared_ptr<Schema> projection_schema,
+                                        std::shared_ptr<Schema> dataset_schema,
+                                        int64_t file_size,
+                                        ceph::bufferlist& bl) {
   // serialize the filter expression's and the schema's.
   ARROW_ASSIGN_OR_RAISE(auto filter_buffer, Serialize(filter));
   ARROW_ASSIGN_OR_RAISE(auto part_expr_buffer, Serialize(part_expr));
@@ -66,14 +70,17 @@ Status SerializeScanRequestToBufferlist(Expression filter, Expression part_expr,
 
   // convert projection schema size to buffer.
   char* projection_schema_size_buffer = new char[8];
-  ARROW_RETURN_NOT_OK(Int64ToChar(projection_schema_size_buffer, projection_schema_buffer->size()));
+  ARROW_RETURN_NOT_OK(
+      Int64ToChar(projection_schema_size_buffer, projection_schema_buffer->size()));
 
   // convert dataset schema to buffer
   char* dataset_schema_size_buffer = new char[8];
-  ARROW_RETURN_NOT_OK(Int64ToChar(dataset_schema_size_buffer, dataset_schema_buffer->size()));
+  ARROW_RETURN_NOT_OK(
+      Int64ToChar(dataset_schema_size_buffer, dataset_schema_buffer->size()));
 
   char *file_size_buffer = new char[8];
-  ARROW_RETURN_NOT_OK(Int64ToChar(file_size_buffer, file_size));
+  ARROW_RETURN_NOT_OK(
+      Int64ToChar(file_size_buffer, file_size));
 
   // append the filter expression size and data.
   bl.append(filter_size_buffer, 8);
@@ -102,7 +109,11 @@ Status SerializeScanRequestToBufferlist(Expression filter, Expression part_expr,
   return Status::OK();
 }
 
-Status DeserializeScanRequestFromBufferlist(Expression* filter, Expression* part_expr, std::shared_ptr<Schema>* projection_schema, std::shared_ptr<Schema>* dataset_schema, int64_t &file_size, ceph::bufferlist& bl) {
+Status DeserializeScanRequestFromBufferlist(Expression* filter, Expression* part_expr,
+                                            std::shared_ptr<Schema>* projection_schema,
+                                            std::shared_ptr<Schema>* dataset_schema,
+                                            int64_t &file_size,
+                                            ceph::bufferlist& bl) {
   ceph::bufferlist::iterator itr = bl.begin();
 
   int64_t filter_size = 0;
@@ -139,20 +150,27 @@ Status DeserializeScanRequestFromBufferlist(Expression* filter, Expression* part
   ARROW_RETURN_NOT_OK(CharToInt64(file_size_buffer, size));
   file_size = size;
 
-  ARROW_ASSIGN_OR_RAISE(auto filter_, Deserialize(std::make_shared<Buffer>((uint8_t*)filter_buffer, filter_size)));
+  ARROW_ASSIGN_OR_RAISE(auto filter_, Deserialize(std::make_shared<Buffer>(
+                                          (uint8_t*)filter_buffer, filter_size)));
   *filter = filter_;
 
-  ARROW_ASSIGN_OR_RAISE(auto part_expr_, Deserialize(std::make_shared<Buffer>((uint8_t*)part_expr_buffer, part_expr_size)));
+  ARROW_ASSIGN_OR_RAISE(
+      auto part_expr_,
+      Deserialize(std::make_shared<Buffer>((uint8_t*)part_expr_buffer, part_expr_size)));
   *part_expr = part_expr_;
 
   ipc::DictionaryMemo empty_memo;
-  io::BufferReader projection_schema_reader(reinterpret_cast<uint8_t*>(projection_schema_buffer), projection_schema_size);
-  io::BufferReader dataset_schema_reader(reinterpret_cast<uint8_t*>(dataset_schema_buffer), dataset_schema_size);
+  io::BufferReader projection_schema_reader((uint8_t*)projection_schema_buffer,
+                                            projection_schema_size);
+  io::BufferReader dataset_schema_reader((uint8_t*)dataset_schema_buffer,
+                                         dataset_schema_size);
 
-  ARROW_ASSIGN_OR_RAISE(auto projection_schema_, ipc::ReadSchema(&projection_schema_reader, &empty_memo));
+  ARROW_ASSIGN_OR_RAISE(auto projection_schema_,
+                        ipc::ReadSchema(&projection_schema_reader, &empty_memo));
   *projection_schema = projection_schema_;
 
-  ARROW_ASSIGN_OR_RAISE(auto dataset_schema_,ipc::ReadSchema(&dataset_schema_reader, &empty_memo));
+  ARROW_ASSIGN_OR_RAISE(auto dataset_schema_,
+                        ipc::ReadSchema(&dataset_schema_reader, &empty_memo));
   *dataset_schema = dataset_schema_;
 
   delete[] filter_size_buffer;
@@ -171,7 +189,8 @@ Status SerializeTableToBufferlist(std::shared_ptr<Table>& table, ceph::bufferlis
   ARROW_ASSIGN_OR_RAISE(auto buffer_output_stream, io::BufferOutputStream::Create());
 
   const auto options = ipc::IpcWriteOptions::Defaults();
-  ARROW_ASSIGN_OR_RAISE(auto writer, ipc::MakeStreamWriter(buffer_output_stream, table->schema(), options));
+  ARROW_ASSIGN_OR_RAISE(
+      auto writer, ipc::MakeStreamWriter(buffer_output_stream, table->schema(), options));
 
   ARROW_RETURN_NOT_OK(writer->WriteTable(*table));
   ARROW_RETURN_NOT_OK(writer->Close());

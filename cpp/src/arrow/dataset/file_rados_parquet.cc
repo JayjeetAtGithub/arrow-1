@@ -34,56 +34,73 @@ namespace dataset {
 
 class RadosParquetScanTask : public ScanTask {
  public:
-  RadosParquetScanTask(std::shared_ptr<ScanOptions> options, std::shared_ptr<ScanContext> context, FileFragment* file, std::shared_ptr<DirectObjectAccess> doa): ScanTask(std::move(options), std::move(context)), partition_expression(file->partition_expression()), dataset_schema(file->dataset_schema()), source_(file->source()), doa_(std::move(doa)) {}
+  RadosParquetScanTask(std::shared_ptr<ScanOptions> options,
+                       std::shared_ptr<ScanContext> context, FileSource source,
+                       std::shared_ptr<DirectObjectAccess> doa)
+      : ScanTask(std::move(options), std::move(context)),
+        source_(std::move(source)),
+        doa_(std::move(doa)) {}
 
   Result<RecordBatchIterator> Execute() override {
-    auto* in = new ceph::bufferlist();
-    auto* out = new ceph::bufferlist();
+    ceph::bufferlist* in = new ceph::bufferlist();
+    ceph::bufferlist* out = new ceph::bufferlist();
 
     Status s;
-    struct stat st{};
+    struct stat st;
     s = doa_->Stat(source_.path(), st);
     if (!s.ok()) {
-        return Status::Invalid(s.message());
+      return Status::Invalid(s.message());
     }
 
-    ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(options_->filter, partition_expression, options_->projector.schema(), dataset_schema, st.st_size, *in));
+    ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(
+        options_->filter, options_->partition_expression, options_->projector.schema(),
+        options_->dataset_schema, st.st_size, *in));
 
     s = doa_->Exec(st.st_ino, "scan_op", *in, *out);
     if (!s.ok()) {
-        return Status::ExecutionError(s.message());
+      return Status::ExecutionError(s.message());
     }
 
     RecordBatchVector batches;
-    auto buffer = std::make_shared<Buffer>(reinterpret_cast<uint8_t*>(out->c_str()), out->length());
+    auto buffer = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
     auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
-    ARROW_ASSIGN_OR_RAISE(auto rb_reader, arrow::ipc::RecordBatchStreamReader::Open(buffer_reader));
+    ARROW_ASSIGN_OR_RAISE(auto rb_reader,
+                          arrow::ipc::RecordBatchStreamReader::Open(buffer_reader));
     return IteratorFromReader(rb_reader);
   }
 
  protected:
-  Expression partition_expression;
-  std::shared_ptr<Schema> dataset_schema;
   FileSource source_;
   std::shared_ptr<DirectObjectAccess> doa_;
 };
 
-RadosParquetFileFormat::RadosParquetFileFormat(const std::string& ceph_config_path, const std::string& data_pool, const std::string& user_name, const std::string& cluster_name) {
-  auto cluster = std::make_shared<RadosCluster>(ceph_config_path, data_pool, user_name, cluster_name);
+RadosParquetFileFormat::RadosParquetFileFormat(const std::string& ceph_config_path,
+                                               const std::string& data_pool,
+                                               const std::string& user_name,
+                                               const std::string& cluster_name) {
+  auto cluster = std::make_shared<RadosCluster>(ceph_config_path, data_pool, user_name,
+                                                cluster_name);
   cluster->Connect();
   auto doa = std::make_shared<arrow::dataset::DirectObjectAccess>(cluster);
   doa_ = doa;
 }
 
-Result<std::shared_ptr<Schema>> RadosParquetFileFormat::Inspect(const FileSource& source) const {
+Result<std::shared_ptr<Schema>> RadosParquetFileFormat::Inspect(
+    const FileSource& source) const {
   ARROW_ASSIGN_OR_RAISE(auto reader, GetReader(source));
   std::shared_ptr<Schema> schema;
   RETURN_NOT_OK(reader->GetSchema(&schema));
   return schema;
 }
 
-Result<ScanTaskIterator> RadosParquetFileFormat::ScanFile(std::shared_ptr<ScanOptions> options, std::shared_ptr<ScanContext> context, FileFragment* file) const {
-  ScanTaskVector v{std::make_shared<RadosParquetScanTask>(std::move(options), std::move(context), file, std::move(doa_))};
+Result<ScanTaskIterator> RadosParquetFileFormat::ScanFile(
+    std::shared_ptr<ScanOptions> options, std::shared_ptr<ScanContext> context,
+    FileFragment* file) const {
+  std::shared_ptr<ScanOptions> options_ = std::make_shared<ScanOptions>(*options);
+  options_->partition_expression = file->partition_expression();
+  options_->dataset_schema = file->dataset_schema();
+  ScanTaskVector v{std::make_shared<RadosParquetScanTask>(
+      std::move(options_), std::move(context), file->source(), std::move(doa_))};
   return MakeVectorIterator(v);
 }
 

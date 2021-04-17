@@ -47,7 +47,7 @@ if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
 
-set(ARROW_VERSION "3.0.0")
+set(ARROW_VERSION "4.0.0-SNAPSHOT")
 
 string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" ARROW_BASE_VERSION "${ARROW_VERSION}")
 
@@ -156,6 +156,7 @@ endif()
 
 find_package(ClangTools)
 find_package(InferTools)
+
 if("$ENV{CMAKE_EXPORT_COMPILE_COMMANDS}" STREQUAL "1" OR CLANG_TIDY_FOUND OR INFER_FOUND)
   # Generate a Clang compile_commands.json "compilation database" file for use
   # with various development tools, such as Vim's YouCompleteMe plugin.

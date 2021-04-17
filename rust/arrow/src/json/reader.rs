@@ -866,13 +866,13 @@ impl Decoder {
         let list_len = rows.len();
         let num_list_bytes = bit_util::ceil(list_len, 8);
         let mut offsets = Vec::with_capacity(list_len + 1);
-        let mut list_nulls =
-            MutableBuffer::new(num_list_bytes).with_bitset(num_list_bytes, false);
+        let mut list_nulls = MutableBuffer::from_len_zeroed(num_list_bytes);
+        let list_nulls = list_nulls.as_slice_mut();
         offsets.push(cur_offset);
         rows.iter().enumerate().for_each(|(i, v)| {
             if let Value::Array(a) = v {
                 cur_offset += OffsetSize::from_usize(a.len()).unwrap();
-                bit_util::set_bit(list_nulls.as_slice_mut(), i);
+                bit_util::set_bit(list_nulls, i);
             } else if let Value::Null = v {
                 // value is null, not incremented
             } else {
@@ -885,8 +885,7 @@ impl Decoder {
             DataType::Null => NullArray::new(valid_len).data(),
             DataType::Boolean => {
                 let num_bytes = bit_util::ceil(valid_len, 8);
-                let mut bool_values =
-                    MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
+                let mut bool_values = MutableBuffer::from_len_zeroed(num_bytes);
                 let mut bool_nulls =
                     MutableBuffer::new(num_bytes).with_bitset(num_bytes, true);
                 let mut curr_index = 0;
@@ -932,8 +931,8 @@ impl Decoder {
             DataType::Float32 => self.read_primitive_list_values::<Float32Type>(rows),
             DataType::Float64 => self.read_primitive_list_values::<Float64Type>(rows),
             DataType::Timestamp(_, _)
-            | DataType::Date32(_)
-            | DataType::Date64(_)
+            | DataType::Date32
+            | DataType::Date64
             | DataType::Time32(_)
             | DataType::Time64(_) => {
                 return Err(ArrowError::JsonError(
@@ -962,8 +961,7 @@ impl Decoder {
                 // extract list values, with non-lists converted to Value::Null
                 let len = rows.len();
                 let num_bytes = bit_util::ceil(len, 8);
-                let mut null_buffer =
-                    MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
+                let mut null_buffer = MutableBuffer::from_len_zeroed(num_bytes);
                 let mut struct_index = 0;
                 let rows: Vec<Value> = rows
                     .iter()
@@ -1003,7 +1001,7 @@ impl Decoder {
         // build list
         let list_data = ArrayData::builder(DataType::List(Box::new(list_field.clone())))
             .len(list_len)
-            .add_buffer(Buffer::from(offsets.to_byte_slice()))
+            .add_buffer(Buffer::from_slice_ref(&offsets))
             .add_child_data(array_data)
             .null_bit_buffer(list_nulls.into())
             .build();
@@ -1086,10 +1084,10 @@ impl Decoder {
                                 field.name(),
                             ),
                     },
-                    DataType::Date64(_) => {
+                    DataType::Date64 => {
                         self.build_primitive_array::<Date64Type>(rows, field.name())
                     }
-                    DataType::Date32(_) => {
+                    DataType::Date32 => {
                         self.build_primitive_array::<Date32Type>(rows, field.name())
                     }
                     DataType::Time64(unit) => match unit {
@@ -1164,8 +1162,7 @@ impl Decoder {
                     DataType::Struct(fields) => {
                         let len = rows.len();
                         let num_bytes = bit_util::ceil(len, 8);
-                        let mut null_buffer =
-                            MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
+                        let mut null_buffer = MutableBuffer::from_len_zeroed(num_bytes);
                         let struct_rows = rows
                             .iter()
                             .enumerate()
@@ -1889,7 +1886,7 @@ mod tests {
             // test that the list offsets are correct
             assert_eq!(
                 cc.data().buffers()[0],
-                Buffer::from(vec![0i32, 2, 2, 4, 5].to_byte_slice())
+                Buffer::from_slice_ref(&[0i32, 2, 2, 4, 5])
             );
             let cc = cc.values();
             let cc = cc.as_any().downcast_ref::<BooleanArray>().unwrap();
@@ -1910,7 +1907,7 @@ mod tests {
             // test that the list offsets are correct
             assert_eq!(
                 dd.data().buffers()[0],
-                Buffer::from(vec![0i32, 1, 1, 2, 6].to_byte_slice())
+                Buffer::from_slice_ref(&[0i32, 1, 1, 2, 6])
             );
             let dd = dd.values();
             let dd = dd.as_any().downcast_ref::<StringArray>().unwrap();
@@ -2031,7 +2028,7 @@ mod tests {
             .build();
         let a_list = ArrayDataBuilder::new(a_field.data_type().clone())
             .len(5)
-            .add_buffer(Buffer::from(vec![0i32, 2, 3, 6, 6, 6].to_byte_slice()))
+            .add_buffer(Buffer::from_slice_ref(&[0i32, 2, 3, 6, 6, 6]))
             .add_child_data(a)
             .null_bit_buffer(Buffer::from(vec![0b00010111]))
             .build();
@@ -2046,7 +2043,7 @@ mod tests {
         let expected = expected.as_any().downcast_ref::<ListArray>().unwrap();
         assert_eq!(
             read.data().buffers()[0],
-            Buffer::from(vec![0i32, 2, 3, 6, 6, 6].to_byte_slice())
+            Buffer::from_slice_ref(&[0i32, 2, 3, 6, 6, 6])
         );
         // compare list null buffers
         assert_eq!(read.data().null_buffer(), expected.data().null_buffer());
@@ -2605,11 +2602,7 @@ mod tests {
 
     #[test]
     fn test_date_from_json_milliseconds() {
-        let schema = Schema::new(vec![Field::new(
-            "a",
-            DataType::Date64(DateUnit::Millisecond),
-            true,
-        )]);
+        let schema = Schema::new(vec![Field::new("a", DataType::Date64, true)]);
 
         let builder = ReaderBuilder::new()
             .with_schema(Arc::new(schema))
@@ -2627,7 +2620,7 @@ mod tests {
         assert_eq!(schema, batch_schema);
 
         let a = schema.column_with_name("a").unwrap();
-        assert_eq!(&DataType::Date64(DateUnit::Millisecond), a.1.data_type());
+        assert_eq!(&DataType::Date64, a.1.data_type());
 
         let aa = batch
             .column(a.0)

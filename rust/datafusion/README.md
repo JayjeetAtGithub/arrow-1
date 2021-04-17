@@ -27,7 +27,7 @@ DataFusion can be used as a library by adding the following to your `Cargo.toml`
 
 ```toml
 [dependencies]
-datafusion = "3.0.0"
+datafusion = "4.0.0-SNAPSHOT"
 ```
 
 ## Using DataFusion as a binary
@@ -71,6 +71,7 @@ DataFusion includes a simple command-line interactive SQL utility. See the [CLI 
 - [ ] Lists
 - [x] Subqueries
 - [ ] Joins
+- [ ] Window
 
 ## Data Sources
 
@@ -122,9 +123,9 @@ are mapped to Arrow types according to the following table
 | `REAL`          | `Float64`                        |
 | `DOUBLE`        | `Float64`                        |
 | `BOOLEAN`       | `Boolean`                        |
-| `DATE`          | `Date64(DateUnit::Day)`          |
+| `DATE`          | `Date32`                         |
 | `TIME`          | `Time64(TimeUnit::Millisecond)`  |
-| `TIMESTAMP`     | `Date64(DateUnit::Millisecond)`  |
+| `TIMESTAMP`     | `Date64`                         |
 | `INTERVAL`      | *Not yet supported*              |
 | `REGCLASS`      | *Not yet supported*              |
 | `TEXT`          | *Not yet supported*              |

@@ -42,7 +42,7 @@ docker-compose run --service-ports ubuntu-cls-demo
 * For installing SkyhookDM-Arrow with [Rook](https://rook.io) on Kubernetes, check out [this](https://github.com/uccross/skyhookdm-arrow-docker/blob/master/README.md#deploying-skyhookdm-arrow-on-a-rook-cluster) guide.
 
 * For installing SkyhookDM-Arrow on CloudLab, check out [this](https://github.com/uccross/skyhookdm-workflows/tree/master/cloudlab#deploy-ceph-skyhookdm-on-cloudlab) guide.
-
+ 
 # Salient Features
 
 * Enables pushing down filters, projections, compute operations to the Storage backend for minimal data transfer over the network.
@@ -51,9 +51,9 @@ docker-compose run --service-ports ubuntu-cls-demo
 
 * Plugs-in seamlessly into the Arrow Dataset API and leverages all its functionality like dataset discovering,  partition pruning, etc.
 
-* Minimal overhead in requirements:
-  1) Requires CephFS to be mounted.
-  2) Requires using the `SplittedParquetWriter` API to write arrow Tables.
+* Minimal overhead in requirements: 
+    1) Requires CephFS to be mounted. 
+    2) Requires using the `SplittedParquetWriter` API to write arrow Tables.
 
 * Built on top of latest Ceph v15.2.x.
 
@@ -63,7 +63,7 @@ docker-compose run --service-ports ubuntu-cls-demo
 
 * `cpp/src/arrow/dataset/file_rados_parquet.h`: This file contains the definitions of 3 APIs. The `RadosCluster` , `DirectObjectAccess`, and the `RadosParquetFileFormat`. The `RadosCluster` API helps create a connection to the Ceph cluster and provides a handle to the cluster that can be passed around. The `DirectObjectAccess` API provides abstractions for converting filenames in CephFS to object IDs in the Object store and allows interacting with the objects directly. The `RadosParquetFileFormat` API takes in the direct object access construct as input and contains the logic of pushing down scans to the underlying objects that make up a file.
 
-* `cpp/src/arrow/dataset/rados.h`: Contains a wrapper for the `librados` SDK for exposing `librados` methods like `init2`, `connect`, `stat`, `ioctx_create`, and `exec` which are required for establishing the connection to the Ceph cluster and for operating on objects directly.
+* `cpp/src/arrow/dataset/rados.h`: Contains a wrapper for the `librados` SDK for exposing `librados` methods like `init2`, `connect`, `stat`, `ioctx_create`, and `exec` which are required for establishing the connection to the Ceph cluster and for operating on objects directly. 
 
 * `cpp/src/arrow/dataset/rados_utils.h`: Contains utility functions for (de)serializing query options, query results, etc. Currently, we serialize all the expressions and schemas into a `ceph::bufferlist`, but in a later release, we plan to use a Flatbuffer schema for making the scan options more scalable.
 
@@ -75,7 +75,7 @@ docker-compose run --service-ports ubuntu-cls-demo
 
 ### Storage side
 
-* `cpp/src/arrow/adapters/arrow-rados-cls/cls_arrow.cc`: Contains the Rados objclass functions and APIs for interacting with objects in the OSDs. Also, it includes a `RandomAccessObject` API to give a random access file view of objects for allowing operations like reading byte ranges, seeks, tell, etc.
+* `cpp/src/arrow/adapters/arrow-rados-cls/cls_arrow.cc`: Contains the Rados objclass functions and APIs for interacting with objects in the OSDs. Also, it includes a `RandomAccessObject` API to give a random access file view of objects for allowing operations like reading byte ranges, seeks, tell, etc. 
 
 # Setting up the development environment
 

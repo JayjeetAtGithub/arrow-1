@@ -29,6 +29,7 @@ use super::array::print_long_array;
 use super::raw_pointer::RawPtrBox;
 use super::*;
 use crate::buffer::{Buffer, MutableBuffer};
+use crate::temporal_conversions;
 use crate::util::bit_util;
 
 /// Number of seconds in a day
@@ -94,6 +95,21 @@ impl<T: ArrowPrimitiveType> PrimitiveArray<T> {
         let offset = i + self.offset();
         unsafe { *self.raw_values.as_ptr().add(offset) }
     }
+
+    /// Creates a PrimitiveArray based on an iterator of values without nulls
+    pub fn from_iter_values<I: IntoIterator<Item = T::Native>>(iter: I) -> Self {
+        let val_buf: Buffer = iter.into_iter().collect();
+        let data = ArrayData::new(
+            T::DATA_TYPE,
+            val_buf.len() / mem::size_of::<<T as ArrowPrimitiveType>::Native>(),
+            None,
+            None,
+            0,
+            vec![val_buf],
+            vec![],
+        );
+        PrimitiveArray::from(Arc::new(data))
+    }
 }
 
 impl<T: ArrowPrimitiveType> Array for PrimitiveArray<T> {
@@ -122,37 +138,20 @@ impl<T: ArrowPrimitiveType> Array for PrimitiveArray<T> {
 
 fn as_datetime<T: ArrowPrimitiveType>(v: i64) -> Option<NaiveDateTime> {
     match T::DATA_TYPE {
-        DataType::Date32(_) => {
-            // convert days into seconds
-            Some(NaiveDateTime::from_timestamp(v as i64 * SECONDS_IN_DAY, 0))
-        }
-        DataType::Date64(_) => Some(NaiveDateTime::from_timestamp(
-            // extract seconds from milliseconds
-            v / MILLISECONDS,
-            // discard extracted seconds and convert milliseconds to nanoseconds
-            (v % MILLISECONDS * MICROSECONDS) as u32,
-        )),
+        DataType::Date32 => Some(temporal_conversions::date32_to_datetime(v as i32)),
+        DataType::Date64 => Some(temporal_conversions::date64_to_datetime(v)),
         DataType::Time32(_) | DataType::Time64(_) => None,
         DataType::Timestamp(unit, _) => match unit {
-            TimeUnit::Second => Some(NaiveDateTime::from_timestamp(v, 0)),
-            TimeUnit::Millisecond => Some(NaiveDateTime::from_timestamp(
-                // extract seconds from milliseconds
-                v / MILLISECONDS,
-                // discard extracted seconds and convert milliseconds to nanoseconds
-                (v % MILLISECONDS * MICROSECONDS) as u32,
-            )),
-            TimeUnit::Microsecond => Some(NaiveDateTime::from_timestamp(
-                // extract seconds from microseconds
-                v / MICROSECONDS,
-                // discard extracted seconds and convert microseconds to nanoseconds
-                (v % MICROSECONDS * MILLISECONDS) as u32,
-            )),
-            TimeUnit::Nanosecond => Some(NaiveDateTime::from_timestamp(
-                // extract seconds from nanoseconds
-                v / NANOSECONDS,
-                // discard extracted seconds
-                (v % NANOSECONDS) as u32,
-            )),
+            TimeUnit::Second => Some(temporal_conversions::timestamp_s_to_datetime(v)),
+            TimeUnit::Millisecond => {
+                Some(temporal_conversions::timestamp_ms_to_datetime(v))
+            }
+            TimeUnit::Microsecond => {
+                Some(temporal_conversions::timestamp_us_to_datetime(v))
+            }
+            TimeUnit::Nanosecond => {
+                Some(temporal_conversions::timestamp_ns_to_datetime(v))
+            }
         },
         // interval is not yet fully documented [ARROW-3097]
         DataType::Interval(_) => None,
@@ -170,43 +169,20 @@ fn as_time<T: ArrowPrimitiveType>(v: i64) -> Option<NaiveTime> {
             // safe to immediately cast to u32 as `self.value(i)` is positive i32
             let v = v as u32;
             match unit {
-                TimeUnit::Second => Some(NaiveTime::from_num_seconds_from_midnight(v, 0)),
+                TimeUnit::Second => Some(temporal_conversions::time32s_to_time(v as i32)),
                 TimeUnit::Millisecond => {
-                    Some(NaiveTime::from_num_seconds_from_midnight(
-                        // extract seconds from milliseconds
-                        v / MILLISECONDS as u32,
-                        // discard extracted seconds and convert milliseconds to
-                        // nanoseconds
-                        v % MILLISECONDS as u32 * MICROSECONDS as u32,
-                    ))
+                    Some(temporal_conversions::time32ms_to_time(v as i32))
                 }
                 _ => None,
             }
         }
-        DataType::Time64(unit) => {
-            match unit {
-                TimeUnit::Microsecond => {
-                    Some(NaiveTime::from_num_seconds_from_midnight(
-                        // extract seconds from microseconds
-                        (v / MICROSECONDS) as u32,
-                        // discard extracted seconds and convert microseconds to
-                        // nanoseconds
-                        (v % MICROSECONDS * MILLISECONDS) as u32,
-                    ))
-                }
-                TimeUnit::Nanosecond => {
-                    Some(NaiveTime::from_num_seconds_from_midnight(
-                        // extract seconds from nanoseconds
-                        (v / NANOSECONDS) as u32,
-                        // discard extracted seconds
-                        (v % NANOSECONDS) as u32,
-                    ))
-                }
-                _ => None,
-            }
-        }
+        DataType::Time64(unit) => match unit {
+            TimeUnit::Microsecond => Some(temporal_conversions::time64us_to_time(v)),
+            TimeUnit::Nanosecond => Some(temporal_conversions::time64ns_to_time(v)),
+            _ => None,
+        },
         DataType::Timestamp(_, _) => as_datetime::<T>(v).map(|datetime| datetime.time()),
-        DataType::Date32(_) | DataType::Date64(_) => Some(NaiveTime::from_hms(0, 0, 0)),
+        DataType::Date32 | DataType::Date64 => Some(NaiveTime::from_hms(0, 0, 0)),
         DataType::Interval(_) => None,
         _ => None,
     }
@@ -243,7 +219,7 @@ impl<T: ArrowPrimitiveType> fmt::Debug for PrimitiveArray<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PrimitiveArray<{:?}>\n[\n", T::DATA_TYPE)?;
         print_long_array(self, f, |array, index, f| match T::DATA_TYPE {
-            DataType::Date32(_) | DataType::Date64(_) => {
+            DataType::Date32 | DataType::Date64 => {
                 let v = self.value(index).to_usize().unwrap() as i64;
                 match as_date::<T>(v) {
                     Some(date) => write!(f, "{:?}", date),
@@ -295,20 +271,21 @@ impl<T: ArrowPrimitiveType, Ptr: Borrow<Option<<T as ArrowPrimitiveType>::Native
         let data_len = data_len.expect("Iterator must be sized"); // panic if no upper bound.
 
         let num_bytes = bit_util::ceil(data_len, 8);
-        let mut null_buf = MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
+        let mut null_buf = MutableBuffer::from_len_zeroed(num_bytes);
         let mut val_buf = MutableBuffer::new(
             data_len * mem::size_of::<<T as ArrowPrimitiveType>::Native>(),
         );
-
-        let null = vec![0; mem::size_of::<<T as ArrowPrimitiveType>::Native>()];
 
         let null_slice = null_buf.as_slice_mut();
         iter.enumerate().for_each(|(i, item)| {
             if let Some(a) = item.borrow() {
                 bit_util::set_bit(null_slice, i);
-                val_buf.extend_from_slice(a.to_byte_slice());
+                val_buf.push(*a);
             } else {
-                val_buf.extend_from_slice(&null);
+                // this ensures that null items on the buffer are not arbitrary.
+                // This is important because falible operations can use null values (e.g. a vectorized "add")
+                // which may panic (e.g. overflow if the number on the slots happen to be very large).
+                val_buf.push(T::Native::default());
             }
         });
 
@@ -334,7 +311,7 @@ macro_rules! def_numeric_from_vec {
             fn from(data: Vec<<$ty as ArrowPrimitiveType>::Native>) -> Self {
                 let array_data = ArrayData::builder($ty::DATA_TYPE)
                     .len(data.len())
-                    .add_buffer(Buffer::from(data.to_byte_slice()))
+                    .add_buffer(Buffer::from_slice_ref(&data))
                     .build();
                 PrimitiveArray::from(array_data)
             }
@@ -383,7 +360,7 @@ impl<T: ArrowTimestampType> PrimitiveArray<T> {
         let array_data =
             ArrayData::builder(DataType::Timestamp(T::get_time_unit(), timezone))
                 .len(data.len())
-                .add_buffer(Buffer::from(data.to_byte_slice()))
+                .add_buffer(Buffer::from_slice_ref(&data))
                 .build();
         PrimitiveArray::from(array_data)
     }
@@ -398,14 +375,13 @@ impl<T: ArrowTimestampType> PrimitiveArray<T> {
         let mut val_buf = MutableBuffer::new(data_len * mem::size_of::<i64>());
 
         {
-            let null = vec![0; mem::size_of::<i64>()];
             let null_slice = null_buf.as_slice_mut();
             for (i, v) in data.iter().enumerate() {
                 if let Some(n) = v {
                     bit_util::set_bit(null_slice, i);
-                    val_buf.extend_from_slice(&n.to_byte_slice());
+                    val_buf.push(*n);
                 } else {
-                    val_buf.extend_from_slice(&null);
+                    val_buf.push(0i64);
                 }
             }
         }
@@ -448,11 +424,9 @@ mod tests {
 
     #[test]
     fn test_primitive_array_from_vec() {
-        let buf = Buffer::from(&[0, 1, 2, 3, 4].to_byte_slice());
+        let buf = Buffer::from_slice_ref(&[0, 1, 2, 3, 4]);
         let arr = Int32Array::from(vec![0, 1, 2, 3, 4]);
-        let slice = arr.values();
         assert_eq!(buf, arr.data.buffers()[0]);
-        assert_eq!(&[0, 1, 2, 3, 4], slice);
         assert_eq!(5, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(0, arr.null_count());
@@ -461,6 +435,7 @@ mod tests {
             assert!(arr.is_valid(i));
             assert_eq!(i as i32, arr.value(i));
         }
+        assert_eq!(&[0, 1, 2, 3, 4], arr.values());
 
         assert_eq!(64, arr.get_buffer_memory_size());
         let internals_of_primitive_array = 8 + 72; // RawPtrBox & Arc<ArrayData> combined.
@@ -575,8 +550,10 @@ mod tests {
         assert_eq!(0, arr.offset());
         assert_eq!(1, arr.null_count());
         assert_eq!(1, arr.value(0));
+        assert_eq!(1, arr.values()[0]);
         assert!(arr.is_null(1));
         assert_eq!(-5, arr.value(2));
+        assert_eq!(-5, arr.values()[2]);
 
         // a day_time interval contains days and milliseconds, but we do not yet have accessors for the values
         let arr = IntervalDayTimeArray::from(vec![Some(1), None, Some(-5)]);
@@ -584,8 +561,10 @@ mod tests {
         assert_eq!(0, arr.offset());
         assert_eq!(1, arr.null_count());
         assert_eq!(1, arr.value(0));
+        assert_eq!(1, arr.values()[0]);
         assert!(arr.is_null(1));
         assert_eq!(-5, arr.value(2));
+        assert_eq!(-5, arr.values()[2]);
     }
 
     #[test]
@@ -595,32 +574,40 @@ mod tests {
         assert_eq!(0, arr.offset());
         assert_eq!(1, arr.null_count());
         assert_eq!(1, arr.value(0));
+        assert_eq!(1, arr.values()[0]);
         assert!(arr.is_null(1));
         assert_eq!(-5, arr.value(2));
+        assert_eq!(-5, arr.values()[2]);
 
         let arr = DurationMillisecondArray::from(vec![Some(1), None, Some(-5)]);
         assert_eq!(3, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(1, arr.null_count());
         assert_eq!(1, arr.value(0));
+        assert_eq!(1, arr.values()[0]);
         assert!(arr.is_null(1));
         assert_eq!(-5, arr.value(2));
+        assert_eq!(-5, arr.values()[2]);
 
         let arr = DurationMicrosecondArray::from(vec![Some(1), None, Some(-5)]);
         assert_eq!(3, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(1, arr.null_count());
         assert_eq!(1, arr.value(0));
+        assert_eq!(1, arr.values()[0]);
         assert!(arr.is_null(1));
         assert_eq!(-5, arr.value(2));
+        assert_eq!(-5, arr.values()[2]);
 
         let arr = DurationNanosecondArray::from(vec![Some(1), None, Some(-5)]);
         assert_eq!(3, arr.len());
         assert_eq!(0, arr.offset());
         assert_eq!(1, arr.null_count());
         assert_eq!(1, arr.value(0));
+        assert_eq!(1, arr.values()[0]);
         assert!(arr.is_null(1));
         assert_eq!(-5, arr.value(2));
+        assert_eq!(-5, arr.values()[2]);
     }
 
     #[test]
@@ -631,6 +618,7 @@ mod tests {
         assert_eq!(0, arr.null_count());
         assert_eq!(1, arr.value(0));
         assert_eq!(-5, arr.value(1));
+        assert_eq!(&[1, -5], arr.values());
 
         let arr = TimestampMillisecondArray::from_vec(vec![1, -5], None);
         assert_eq!(2, arr.len());
@@ -638,6 +626,7 @@ mod tests {
         assert_eq!(0, arr.null_count());
         assert_eq!(1, arr.value(0));
         assert_eq!(-5, arr.value(1));
+        assert_eq!(&[1, -5], arr.values());
 
         let arr = TimestampMicrosecondArray::from_vec(vec![1, -5], None);
         assert_eq!(2, arr.len());
@@ -645,6 +634,7 @@ mod tests {
         assert_eq!(0, arr.null_count());
         assert_eq!(1, arr.value(0));
         assert_eq!(-5, arr.value(1));
+        assert_eq!(&[1, -5], arr.values());
 
         let arr = TimestampNanosecondArray::from_vec(vec![1, -5], None);
         assert_eq!(2, arr.len());
@@ -652,6 +642,7 @@ mod tests {
         assert_eq!(0, arr.null_count());
         assert_eq!(1, arr.value(0));
         assert_eq!(-5, arr.value(1));
+        assert_eq!(&[1, -5], arr.values());
     }
 
     #[test]
@@ -680,16 +671,20 @@ mod tests {
             assert_eq!(i == 1, arr2.is_null(i));
             assert_eq!(i != 1, arr2.is_valid(i));
         }
+        let int_arr2 = arr2.as_any().downcast_ref::<Int32Array>().unwrap();
+        assert_eq!(2, int_arr2.values()[0]);
+        assert_eq!(&[4, 5, 6], &int_arr2.values()[2..5]);
 
         let arr3 = arr2.slice(2, 3);
         assert_eq!(3, arr3.len());
         assert_eq!(4, arr3.offset());
         assert_eq!(0, arr3.null_count());
 
-        let int_arr = arr3.as_any().downcast_ref::<Int32Array>().unwrap();
-        assert_eq!(4, int_arr.value(0));
-        assert_eq!(5, int_arr.value(1));
-        assert_eq!(6, int_arr.value(2));
+        let int_arr3 = arr3.as_any().downcast_ref::<Int32Array>().unwrap();
+        assert_eq!(&[4, 5, 6], int_arr3.values());
+        assert_eq!(4, int_arr3.value(0));
+        assert_eq!(5, int_arr3.value(1));
+        assert_eq!(6, int_arr3.value(2));
     }
 
     #[test]
@@ -787,7 +782,7 @@ mod tests {
     fn test_date32_fmt_debug() {
         let arr: PrimitiveArray<Date32Type> = vec![12356, 13548].into();
         assert_eq!(
-            "PrimitiveArray<Date32(Day)>\n[\n  2003-10-31,\n  2007-02-04,\n]",
+            "PrimitiveArray<Date32>\n[\n  2003-10-31,\n  2007-02-04,\n]",
             format!("{:?}", arr)
         );
     }
@@ -804,7 +799,7 @@ mod tests {
     #[test]
     fn test_primitive_array_builder() {
         // Test building a primitive array with ArrayData builder and offset
-        let buf = Buffer::from(&[0, 1, 2, 3, 4].to_byte_slice());
+        let buf = Buffer::from_slice_ref(&[0, 1, 2, 3, 4]);
         let buf2 = buf.clone();
         let data = ArrayData::builder(DataType::Int32)
             .len(5)
@@ -817,6 +812,18 @@ mod tests {
         assert_eq!(0, arr.null_count());
         for i in 0..3 {
             assert_eq!((i + 2) as i32, arr.value(i));
+        }
+    }
+
+    #[test]
+    fn test_primitive_from_iter_values() {
+        // Test building a primitive array with from_iter_values
+
+        let arr: PrimitiveArray<Int32Type> = PrimitiveArray::from_iter_values(0..10);
+        assert_eq!(10, arr.len());
+        assert_eq!(0, arr.null_count());
+        for i in 0..10i32 {
+            assert_eq!(i, arr.value(i as usize));
         }
     }
 

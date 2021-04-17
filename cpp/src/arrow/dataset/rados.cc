@@ -32,7 +32,8 @@ int IoCtxWrapper::read(const std::string& oid, ceph::bufferlist& bl, size_t len,
   return this->ioCtx->read(oid, bl, len, offset);
 }
 
-int IoCtxWrapper::exec(const std::string& oid, const char* cls, const char* method, ceph::bufferlist& in, ceph::bufferlist& out) {
+int IoCtxWrapper::exec(const std::string& oid, const char* cls, const char* method,
+                       ceph::bufferlist& in, ceph::bufferlist& out) {
   return this->ioCtx->exec(oid, cls, method, in, out);
 }
 
@@ -49,6 +50,26 @@ std::vector<std::string> IoCtxWrapper::list() {
   }
   return oids;
 }
+
+int RadosWrapper::init2(const char* const name, const char* const clustername,
+                        uint64_t flags) {
+  return this->cluster->init2(name, clustername, flags);
+}
+
+int RadosWrapper::ioctx_create(const char* name, IoCtxInterface* pioctx) {
+  librados::IoCtx ioCtx;
+  int ret = this->cluster->ioctx_create(name, ioCtx);
+  pioctx->setIoCtx(&ioCtx);
+  return ret;
+}
+
+int RadosWrapper::conf_read_file(const char* const path) {
+  return this->cluster->conf_read_file(path);
+}
+
+int RadosWrapper::connect() { return this->cluster->connect(); }
+
+void RadosWrapper::shutdown() { return this->cluster->shutdown(); }
 
 }  // namespace dataset
 }  // namespace arrow

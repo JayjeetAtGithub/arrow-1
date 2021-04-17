@@ -22,12 +22,16 @@ use std::{collections::HashSet, sync::Arc};
 use arrow::datatypes::Schema;
 
 use super::optimizer::OptimizerRule;
-use crate::error::{DataFusionError, Result};
 use crate::logical_plan::{
-    Expr, LogicalPlan, Operator, Partitioning, PlanType, StringifiedPlan, ToDFSchema,
+    Expr, LogicalPlan, Operator, Partitioning, PlanType, Recursion, StringifiedPlan,
+    ToDFSchema,
 };
 use crate::prelude::{col, lit};
 use crate::scalar::ScalarValue;
+use crate::{
+    error::{DataFusionError, Result},
+    logical_plan::ExpressionVisitor,
+};
 
 const CASE_EXPR_MARKER: &str = "__DATAFUSION_CASE_EXPR__";
 const CASE_ELSE_MARKER: &str = "__DATAFUSION_CASE_ELSE__";
@@ -46,79 +50,52 @@ pub fn exprlist_to_column_names(
 
 /// Recursively walk an expression tree, collecting the unique set of column names
 /// referenced in the expression
-pub fn expr_to_column_names(expr: &Expr, accum: &mut HashSet<String>) -> Result<()> {
-    match expr {
-        Expr::Alias(expr, _) => expr_to_column_names(expr, accum),
-        Expr::Column(name) => {
-            accum.insert(name.clone());
-            Ok(())
-        }
-        Expr::ScalarVariable(var_names) => {
-            accum.insert(var_names.join("."));
-            Ok(())
-        }
-        Expr::Literal(_) => {
-            // not needed
-            Ok(())
-        }
-        Expr::Not(e) => expr_to_column_names(e, accum),
-        Expr::Negative(e) => expr_to_column_names(e, accum),
-        Expr::IsNull(e) => expr_to_column_names(e, accum),
-        Expr::IsNotNull(e) => expr_to_column_names(e, accum),
-        Expr::BinaryExpr { left, right, .. } => {
-            expr_to_column_names(left, accum)?;
-            expr_to_column_names(right, accum)?;
-            Ok(())
-        }
-        Expr::Case {
-            expr,
-            when_then_expr,
-            else_expr,
-            ..
-        } => {
-            if let Some(e) = expr {
-                expr_to_column_names(e, accum)?;
+struct ColumnNameVisitor<'a> {
+    accum: &'a mut HashSet<String>,
+}
+
+impl ExpressionVisitor for ColumnNameVisitor<'_> {
+    fn pre_visit(self, expr: &Expr) -> Result<Recursion<Self>> {
+        match expr {
+            Expr::Column(name) => {
+                self.accum.insert(name.clone());
             }
-            for (w, t) in when_then_expr {
-                expr_to_column_names(w, accum)?;
-                expr_to_column_names(t, accum)?;
+            Expr::ScalarVariable(var_names) => {
+                self.accum.insert(var_names.join("."));
             }
-            if let Some(e) = else_expr {
-                expr_to_column_names(e, accum)?
-            }
-            Ok(())
+            Expr::Alias(_, _) => {}
+            Expr::Literal(_) => {}
+            Expr::BinaryExpr { .. } => {}
+            Expr::Not(_) => {}
+            Expr::IsNotNull(_) => {}
+            Expr::IsNull(_) => {}
+            Expr::Negative(_) => {}
+            Expr::Between { .. } => {}
+            Expr::Case { .. } => {}
+            Expr::Cast { .. } => {}
+            Expr::Sort { .. } => {}
+            Expr::ScalarFunction { .. } => {}
+            Expr::ScalarUDF { .. } => {}
+            Expr::AggregateFunction { .. } => {}
+            Expr::AggregateUDF { .. } => {}
+            Expr::InList { .. } => {}
+            Expr::Wildcard => {}
         }
-        Expr::Cast { expr, .. } => expr_to_column_names(expr, accum),
-        Expr::Sort { expr, .. } => expr_to_column_names(expr, accum),
-        Expr::AggregateFunction { args, .. } => exprlist_to_column_names(args, accum),
-        Expr::AggregateUDF { args, .. } => exprlist_to_column_names(args, accum),
-        Expr::ScalarFunction { args, .. } => exprlist_to_column_names(args, accum),
-        Expr::ScalarUDF { args, .. } => exprlist_to_column_names(args, accum),
-        Expr::Between {
-            expr, low, high, ..
-        } => {
-            expr_to_column_names(expr, accum)?;
-            expr_to_column_names(low, accum)?;
-            expr_to_column_names(high, accum)?;
-            Ok(())
-        }
-        Expr::InList { expr, list, .. } => {
-            expr_to_column_names(expr, accum)?;
-            for list_expr in list {
-                expr_to_column_names(list_expr, accum)?;
-            }
-            Ok(())
-        }
-        Expr::Wildcard => Err(DataFusionError::Internal(
-            "Wildcard expressions are not valid in a logical query plan".to_owned(),
-        )),
+        Ok(Recursion::Continue(self))
     }
+}
+
+/// Recursively walk an expression tree, collecting the unique set of column names
+/// referenced in the expression
+pub fn expr_to_column_names(expr: &Expr, accum: &mut HashSet<String>) -> Result<()> {
+    expr.accept(ColumnNameVisitor { accum })?;
+    Ok(())
 }
 
 /// Create a `LogicalPlan::Explain` node by running `optimizer` on the
 /// input plan and capturing the resulting plan string
 pub fn optimize_explain(
-    optimizer: &mut impl OptimizerRule,
+    optimizer: &impl OptimizerRule,
     verbose: bool,
     plan: &LogicalPlan,
     stringified_plans: &Vec<StringifiedPlan>,
@@ -140,6 +117,40 @@ pub fn optimize_explain(
         stringified_plans,
         schema: schema.clone().to_dfschema_ref()?,
     })
+}
+
+/// Convenience rule for writing optimizers: recursively invoke
+/// optimize on plan's children and then return a node of the same
+/// type. Useful for optimizer rules which want to leave the type
+/// of plan unchanged but still apply to the children.
+/// This also handles the case when the `plan` is a [`LogicalPlan::Explain`].
+pub fn optimize_children(
+    optimizer: &impl OptimizerRule,
+    plan: &LogicalPlan,
+) -> Result<LogicalPlan> {
+    if let LogicalPlan::Explain {
+        verbose,
+        plan,
+        stringified_plans,
+        schema,
+    } = plan
+    {
+        return optimize_explain(
+            optimizer,
+            *verbose,
+            &*plan,
+            stringified_plans,
+            &schema.as_ref().to_owned().into(),
+        );
+    }
+
+    let new_exprs = expressions(&plan);
+    let new_inputs = inputs(&plan)
+        .into_iter()
+        .map(|plan| optimizer.optimize(plan))
+        .collect::<Result<Vec<_>>>()?;
+
+    from_plan(plan, &new_exprs, &new_inputs)
 }
 
 /// returns all expressions (non-recursively) in the current logical plan node.
@@ -332,7 +343,7 @@ pub fn rewrite_expression(expr: &Expr, expressions: &Vec<Expr>) -> Result<Expr> 
     match expr {
         Expr::BinaryExpr { op, .. } => Ok(Expr::BinaryExpr {
             left: Box::new(expressions[0].clone()),
-            op: op.clone(),
+            op: *op,
             right: Box::new(expressions[1].clone()),
         }),
         Expr::IsNull(_) => Ok(Expr::IsNull(Box::new(expressions[0].clone()))),
@@ -469,7 +480,7 @@ mod tests {
     struct TestOptimizer {}
 
     impl OptimizerRule for TestOptimizer {
-        fn optimize(&mut self, plan: &LogicalPlan) -> Result<LogicalPlan> {
+        fn optimize(&self, plan: &LogicalPlan) -> Result<LogicalPlan> {
             Ok(plan.clone())
         }
 
@@ -480,13 +491,13 @@ mod tests {
 
     #[test]
     fn test_optimize_explain() -> Result<()> {
-        let mut optimizer = TestOptimizer {};
+        let optimizer = TestOptimizer {};
 
         let empty_plan = LogicalPlanBuilder::empty(false).build()?;
         let schema = LogicalPlan::explain_schema();
 
         let optimized_explain = optimize_explain(
-            &mut optimizer,
+            &optimizer,
             true,
             &empty_plan,
             &vec![StringifiedPlan::new(PlanType::LogicalPlan, "...")],

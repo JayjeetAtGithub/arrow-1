@@ -17,6 +17,7 @@
 
 ARG base=amd64/ubuntu:18.04
 FROM ${base}
+ARG arch
 
 # pipefail is enabled for proper error detection in the `wget | apt-key add`
 # step
@@ -78,6 +79,9 @@ RUN apt-get update -y -q && \
         libprotoc-dev \
         libre2-dev \
         libsnappy-dev \
+        librados-dev \
+        rados-objclass-dev \
+        python3-rados \
         libssl-dev \
         libutf8proc-dev \
         libzstd-dev \
@@ -89,6 +93,12 @@ RUN apt-get update -y -q && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists*
 
+COPY ci/scripts/install_minio.sh \
+     /arrow/ci/scripts/
+COPY ci/scripts/install_ceph.sh \
+     /arrow/ci/scripts/
+RUN /arrow/ci/scripts/install_minio.sh ${arch} linux latest /usr/local
+RUN /arrow/ci/scripts/install_ceph.sh
 # Prioritize system packages and local installation
 # The following dependencies will be downloaded due to missing/invalid packages
 # provided by the distribution:
@@ -112,6 +122,7 @@ ENV ARROW_BUILD_TESTS=ON \
     ARROW_PLASMA=ON \
     ARROW_USE_ASAN=OFF \
     ARROW_USE_CCACHE=ON \
+    ARROW_USE_TSAN=OFF \
     ARROW_USE_UBSAN=OFF \
     ARROW_WITH_BROTLI=ON \
     ARROW_WITH_BZ2=ON \

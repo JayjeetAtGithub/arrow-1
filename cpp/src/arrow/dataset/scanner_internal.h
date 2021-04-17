@@ -26,6 +26,7 @@
 #include "arrow/dataset/dataset_internal.h"
 #include "arrow/dataset/partition.h"
 #include "arrow/dataset/scanner.h"
+#include "arrow/util/logging.h"
 
 namespace arrow {
 namespace dataset {
@@ -123,6 +124,11 @@ inline Result<ScanTaskIterator> GetScanTaskIterator(
   auto fn = [options,
              context](std::shared_ptr<Fragment> fragment) -> Result<ScanTaskIterator> {
     ARROW_ASSIGN_OR_RAISE(auto scan_task_it, fragment->Scan(options, context));
+
+    if (fragment->type_name() == "rados-parquet") {
+      // if format is `rados-parquet`, then don't do filter and projection on the client side.
+      return std::move(scan_task_it);
+    }
 
     auto partition = fragment->partition_expression();
     // Apply the filter and/or projection to incoming RecordBatches by

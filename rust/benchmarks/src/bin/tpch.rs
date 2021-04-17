@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use arrow::datatypes::{DataType, DateUnit, Field, Schema};
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow::util::pretty;
 use datafusion::datasource::parquet::ParquetTable;
 use datafusion::datasource::{CsvFile, MemTable, TableProvider};
@@ -32,6 +32,10 @@ use datafusion::prelude::*;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use structopt::StructOpt;
+
+#[cfg(feature = "snmalloc")]
+#[global_allocator]
+static ALLOC: snmalloc_rs::SnMalloc = snmalloc_rs::SnMalloc;
 
 #[derive(Debug, StructOpt)]
 struct BenchmarkOpt {
@@ -66,6 +70,10 @@ struct BenchmarkOpt {
     /// Load the data into a MemTable before executing the query
     #[structopt(short = "m", long = "mem-table")]
     mem_table: bool,
+
+    /// Number of partitions to create when using MemTable as input
+    #[structopt(short = "n", long = "partitions", default_value = "8")]
+    partitions: usize,
 }
 
 #[derive(Debug, StructOpt)]
@@ -134,8 +142,12 @@ async fn benchmark(opt: BenchmarkOpt) -> Result<Vec<arrow::record_batch::RecordB
             println!("Loading table '{}' into memory", table);
             let start = Instant::now();
 
-            let memtable =
-                MemTable::load(table_provider.as_ref(), opt.batch_size).await?;
+            let memtable = MemTable::load(
+                table_provider.as_ref(),
+                opt.batch_size,
+                Some(opt.partitions),
+            )
+            .await?;
             println!(
                 "Loaded table '{}' into memory in {} ms",
                 table,
@@ -1173,7 +1185,7 @@ fn get_schema(table: &str) -> Schema {
             Field::new("o_custkey", DataType::Int32, false),
             Field::new("o_orderstatus", DataType::Utf8, false),
             Field::new("o_totalprice", DataType::Float64, false),
-            Field::new("o_orderdate", DataType::Date32(DateUnit::Day), false),
+            Field::new("o_orderdate", DataType::Date32, false),
             Field::new("o_orderpriority", DataType::Utf8, false),
             Field::new("o_clerk", DataType::Utf8, false),
             Field::new("o_shippriority", DataType::Int32, false),
@@ -1191,9 +1203,9 @@ fn get_schema(table: &str) -> Schema {
             Field::new("l_tax", DataType::Float64, false),
             Field::new("l_returnflag", DataType::Utf8, false),
             Field::new("l_linestatus", DataType::Utf8, false),
-            Field::new("l_shipdate", DataType::Date32(DateUnit::Day), false),
-            Field::new("l_commitdate", DataType::Date32(DateUnit::Day), false),
-            Field::new("l_receiptdate", DataType::Date32(DateUnit::Day), false),
+            Field::new("l_shipdate", DataType::Date32, false),
+            Field::new("l_commitdate", DataType::Date32, false),
+            Field::new("l_receiptdate", DataType::Date32, false),
             Field::new("l_shipinstruct", DataType::Utf8, false),
             Field::new("l_shipmode", DataType::Utf8, false),
             Field::new("l_comment", DataType::Utf8, false),
@@ -1409,7 +1421,7 @@ mod tests {
             3 => Schema::new(vec![
                 Field::new("l_orderkey", DataType::Int32, true),
                 Field::new("revenue", DataType::Float64, true),
-                Field::new("o_orderdat", DataType::Date32(DateUnit::Day), true),
+                Field::new("o_orderdat", DataType::Date32, true),
                 Field::new("o_shippriority", DataType::Int32, true),
             ]),
 
@@ -1487,7 +1499,7 @@ mod tests {
                 Field::new("c_name", DataType::Utf8, true),
                 Field::new("c_custkey", DataType::Int32, true),
                 Field::new("o_orderkey", DataType::Int32, true),
-                Field::new("o_orderdat", DataType::Date32(DateUnit::Day), true),
+                Field::new("o_orderdat", DataType::Date32, true),
                 Field::new("o_totalprice", DataType::Float64, true),
                 Field::new("sum_l_quantity", DataType::Float64, true),
             ]),
@@ -1563,7 +1575,7 @@ mod tests {
                 .file_extension(".out");
             let df = ctx.read_csv(&format!("{}/answers/q{}.out", path, n), options)?;
             let df = df.select(
-                get_answer_schema(n)
+                &get_answer_schema(n)
                     .fields()
                     .iter()
                     .map(|field| {
@@ -1589,6 +1601,7 @@ mod tests {
                 path: PathBuf::from(path.to_string()),
                 file_format: "tbl".to_string(),
                 mem_table: false,
+                partitions: 16,
             };
             let actual = benchmark(opt).await?;
 

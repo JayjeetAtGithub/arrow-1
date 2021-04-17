@@ -47,21 +47,9 @@ macro_rules! compare_op {
         let null_bit_buffer =
             combine_option_bitmap($left.data_ref(), $right.data_ref(), $left.len())?;
 
-        let byte_capacity = bit_util::ceil($left.len(), 8);
-        let actual_capacity = bit_util::round_upto_multiple_of_64(byte_capacity);
-        let mut buffer = MutableBuffer::new(actual_capacity);
-        buffer.resize(byte_capacity);
-        let data = buffer.as_mut_ptr();
-
-        for i in 0..$left.len() {
-            if $op($left.value(i), $right.value(i)) {
-                // SAFETY: this is safe as `data` has at least $left.len() elements.
-                // and `i` is bound by $left.len()
-                unsafe {
-                    bit_util::set_bit_raw(data, i);
-                }
-            }
-        }
+        let buffer = (0..$left.len())
+            .map(|i| $op($left.value(i), $right.value(i)))
+            .collect();
 
         let data = ArrayData::new(
             DataType::Boolean,
@@ -69,7 +57,7 @@ macro_rules! compare_op {
             None,
             null_bit_buffer,
             0,
-            vec![buffer.into()],
+            vec![buffer],
             vec![],
         );
         Ok(BooleanArray::from(Arc::new(data)))
@@ -80,21 +68,9 @@ macro_rules! compare_op_scalar {
     ($left: expr, $right:expr, $op:expr) => {{
         let null_bit_buffer = $left.data().null_buffer().cloned();
 
-        let byte_capacity = bit_util::ceil($left.len(), 8);
-        let actual_capacity = bit_util::round_upto_multiple_of_64(byte_capacity);
-        let mut buffer = MutableBuffer::new(actual_capacity);
-        buffer.resize(byte_capacity);
-        let data = buffer.as_mut_ptr();
-
-        for i in 0..$left.len() {
-            if $op($left.value(i), $right) {
-                // SAFETY: this is safe as `data` has at least $left.len() elements
-                // and `i` is bound by $left.len()
-                unsafe {
-                    bit_util::set_bit_raw(data, i);
-                }
-            }
-        }
+        let buffer = (0..$left.len())
+            .map(|i| $op($left.value(i), $right))
+            .collect();
 
         let data = ArrayData::new(
             DataType::Boolean,
@@ -102,7 +78,7 @@ macro_rules! compare_op_scalar {
             None,
             null_bit_buffer,
             0,
-            vec![buffer.into()],
+            vec![buffer],
             vec![],
         );
         Ok(BooleanArray::from(Arc::new(data)))
@@ -133,7 +109,10 @@ where
     compare_op_scalar!(left, right, op)
 }
 
-pub fn like_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn like_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     let mut map = HashMap::new();
     if left.len() != right.len() {
         return Err(ArrowError::ComputeError(
@@ -182,25 +161,38 @@ fn is_like_pattern(c: char) -> bool {
     c == '%' || c == '_'
 }
 
-pub fn like_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn like_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     let null_bit_buffer = left.data().null_buffer().cloned();
-    let mut result = BooleanBufferBuilder::new(left.len());
+    let bytes = bit_util::ceil(left.len(), 8);
+    let mut bool_buf = MutableBuffer::from_len_zeroed(bytes);
+    let bool_slice = bool_buf.as_slice_mut();
 
     if !right.contains(is_like_pattern) {
         // fast path, can use equals
         for i in 0..left.len() {
-            result.append(left.value(i) == right);
+            if left.value(i) == right {
+                bit_util::set_bit(bool_slice, i);
+            }
         }
     } else if right.ends_with('%') && !right[..right.len() - 1].contains(is_like_pattern)
     {
         // fast path, can use starts_with
+        let starts_with = &right[..right.len() - 1];
         for i in 0..left.len() {
-            result.append(left.value(i).starts_with(&right[..right.len() - 1]));
+            if left.value(i).starts_with(starts_with) {
+                bit_util::set_bit(bool_slice, i);
+            }
         }
     } else if right.starts_with('%') && !right[1..].contains(is_like_pattern) {
         // fast path, can use ends_with
+        let ends_with = &right[1..];
         for i in 0..left.len() {
-            result.append(left.value(i).ends_with(&right[1..]));
+            if left.value(i).ends_with(ends_with) {
+                bit_util::set_bit(bool_slice, i);
+            }
         }
     } else {
         let re_pattern = right.replace("%", ".*").replace("_", ".");
@@ -213,7 +205,9 @@ pub fn like_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray>
 
         for i in 0..left.len() {
             let haystack = left.value(i);
-            result.append(re.is_match(haystack));
+            if re.is_match(haystack) {
+                bit_util::set_bit(bool_slice, i);
+            }
         }
     };
 
@@ -223,13 +217,16 @@ pub fn like_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray>
         None,
         null_bit_buffer,
         0,
-        vec![result.finish()],
+        vec![bool_buf.into()],
         vec![],
     );
     Ok(BooleanArray::from(Arc::new(data)))
 }
 
-pub fn nlike_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn nlike_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     let mut map = HashMap::new();
     if left.len() != right.len() {
         return Err(ArrowError::ComputeError(
@@ -274,7 +271,10 @@ pub fn nlike_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArra
     Ok(BooleanArray::from(Arc::new(data)))
 }
 
-pub fn nlike_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn nlike_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     let null_bit_buffer = left.data().null_buffer().cloned();
     let mut result = BooleanBufferBuilder::new(left.len());
 
@@ -320,51 +320,87 @@ pub fn nlike_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray
     Ok(BooleanArray::from(Arc::new(data)))
 }
 
-pub fn eq_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn eq_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     compare_op!(left, right, |a, b| a == b)
 }
 
-pub fn eq_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn eq_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     compare_op_scalar!(left, right, |a, b| a == b)
 }
 
-pub fn neq_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn neq_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     compare_op!(left, right, |a, b| a != b)
 }
 
-pub fn neq_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn neq_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     compare_op_scalar!(left, right, |a, b| a != b)
 }
 
-pub fn lt_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn lt_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     compare_op!(left, right, |a, b| a < b)
 }
 
-pub fn lt_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn lt_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     compare_op_scalar!(left, right, |a, b| a < b)
 }
 
-pub fn lt_eq_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn lt_eq_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     compare_op!(left, right, |a, b| a <= b)
 }
 
-pub fn lt_eq_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn lt_eq_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     compare_op_scalar!(left, right, |a, b| a <= b)
 }
 
-pub fn gt_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn gt_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     compare_op!(left, right, |a, b| a > b)
 }
 
-pub fn gt_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn gt_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     compare_op_scalar!(left, right, |a, b| a > b)
 }
 
-pub fn gt_eq_utf8(left: &StringArray, right: &StringArray) -> Result<BooleanArray> {
+pub fn gt_eq_utf8<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &GenericStringArray<OffsetSize>,
+) -> Result<BooleanArray> {
     compare_op!(left, right, |a, b| a >= b)
 }
 
-pub fn gt_eq_utf8_scalar(left: &StringArray, right: &str) -> Result<BooleanArray> {
+pub fn gt_eq_utf8_scalar<OffsetSize: StringOffsetSizeTrait>(
+    left: &GenericStringArray<OffsetSize>,
+    right: &str,
+) -> Result<BooleanArray> {
     compare_op_scalar!(left, right, |a, b| a >= b)
 }
 
@@ -713,7 +749,7 @@ where
         };
     let not_both_null_bitmap = not_both_null_bit_buffer.as_slice();
 
-    let mut bool_buf = MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
+    let mut bool_buf = MutableBuffer::from_len_zeroed(num_bytes);
     let bool_slice = bool_buf.as_slice_mut();
 
     // if both array slots are valid, check if list contains primitive
@@ -768,7 +804,7 @@ where
         };
     let not_both_null_bitmap = not_both_null_bit_buffer.as_slice();
 
-    let mut bool_buf = MutableBuffer::new(num_bytes).with_bitset(num_bytes, false);
+    let mut bool_buf = MutableBuffer::from_len_zeroed(num_bytes);
     let bool_slice = &mut bool_buf;
 
     for i in 0..left_len {
@@ -815,7 +851,7 @@ fn new_all_set_buffer(len: usize) -> Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::datatypes::{Int8Type, ToByteSlice};
+    use crate::datatypes::Int8Type;
     use crate::{array::Int32Array, array::Int64Array, datatypes::Field};
 
     /// Evaluate `KERNEL` with two vectors as inputs and assert against the expected output.
@@ -1117,7 +1153,7 @@ mod tests {
             Some(7),
         ])
         .data();
-        let value_offsets = Buffer::from(&[0i64, 3, 6, 6, 9].to_byte_slice());
+        let value_offsets = Buffer::from_slice_ref(&[0i64, 3, 6, 6, 9]);
         let list_data_type =
             DataType::LargeList(Box::new(Field::new("item", DataType::Int32, true)));
         let list_data = ArrayData::builder(list_data_type)
@@ -1225,6 +1261,22 @@ mod tests {
             #[test]
             fn $test_name() {
                 let left = StringArray::from($left);
+                let res = $op(&left, $right).unwrap();
+                let expected = $expected;
+                assert_eq!(expected.len(), res.len());
+                for i in 0..res.len() {
+                    let v = res.value(i);
+                    assert_eq!(
+                        v,
+                        expected[i],
+                        "unexpected result when comparing {} at position {} to {} ",
+                        left.value(i),
+                        i,
+                        $right
+                    );
+                }
+
+                let left = LargeStringArray::from($left);
                 let res = $op(&left, $right).unwrap();
                 let expected = $expected;
                 assert_eq!(expected.len(), res.len());

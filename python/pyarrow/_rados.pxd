@@ -15,17 +15,24 @@
 # specific language governing permissions and limitations
 # under the License.
 
-#' @include type.R
+# cython: language_level = 3
 
-StructType <- R6Class("StructType",
-  inherit = NestedType,
-  public = list(
-    GetFieldByName = function(name) StructType__GetFieldByName(self, name),
-    GetFieldIndex = function(name) StructType__GetFieldIndex(self, name)
-  )
-)
-StructType$create <- function(...) struct__(.fields(list(...)))
+from pyarrow._dataset cimport Dataset
+from pyarrow.lib cimport *
+from pyarrow.lib import frombytes, tobytes
+from pyarrow.includes.common cimport *
+from pyarrow.includes.libarrow cimport *
+from pyarrow.includes.libarrow_dataset cimport *
+from pyarrow.lib cimport _Weakrefable
 
-#' @rdname data-type
-#' @export
-struct <- StructType$create
+cdef extern from "arrow/dataset/file_rados_parquet.h" \
+        namespace "arrow::dataset" nogil:
+    cdef cppclass CRadosParquetFileFormat \
+        "arrow::dataset::RadosParquetFileFormat"(
+            CFileFormat):
+        CRadosParquetFileFormat(
+            c_string ceph_config_path,
+            c_string data_pool,
+            c_string user_name,
+            c_string cluster_name
+        )
