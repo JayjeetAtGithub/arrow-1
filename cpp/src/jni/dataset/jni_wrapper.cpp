@@ -668,8 +668,8 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeSingleFileDatasetFactory(
       GetFileFormat(env, file_format_id);
   arrow::dataset::FileSystemFactoryOptions options;
   JNI_ASSIGN_OR_THROW(std::shared_ptr<arrow::dataset::DatasetFactory> d,
-      arrow::dataset::RandomAccessDatasetFactory::Make(
-          JStringToCString(env, uri), start_offset, length, file_format, options))
+      arrow::dataset::FileSystemDatasetFactory::Make(
+          JStringToCString(env, uri), file_format, options))
   return dataset_factory_holder_.Insert(d);
 }
 
@@ -695,7 +695,7 @@ Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* e
 
   arrow::dataset::FileSystemFactoryOptions options;
   JNI_ASSIGN_OR_THROW(std::shared_ptr<arrow::dataset::DatasetFactory> d,
-                      arrow::dataset::RandomAccessDatasetFactory::Make(
-                          JStringToCString(env, uri), start_offset, length, file_format, options))
+                      arrow::dataset::FileSystemDatasetFactory::Make(
+                          JStringToCString(env, uri), file_format, options))
   return dataset_factory_holder_.Insert(d);
 }

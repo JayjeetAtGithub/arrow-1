@@ -153,6 +153,19 @@ Result<std::shared_ptr<DatasetFactory>> FileSystemDatasetFactory::Make(
                                    std::move(format), std::move(options)));
 }
 
+Result<std::shared_ptr<DatasetFactory>> FileSystemDatasetFactory::Make(
+    std::string uri,
+    std::shared_ptr<FileFormat> format,
+    FileSystemFactoryOptions options) {
+  std::string internal_path;
+  ARROW_ASSIGN_OR_RAISE(std::shared_ptr<fs::FileSystem> filesystem,
+                        arrow::fs::FileSystemFromUri(uri, &internal_path))
+  ARROW_ASSIGN_OR_RAISE(fs::FileInfo file_info, filesystem->GetFileInfo(internal_path))
+  return std::shared_ptr<DatasetFactory>(
+      new FileSystemDatasetFactory({file_info},
+          std::move(filesystem), std::move(format), std::move(options)));
+}
+
 bool StartsWithAnyOf(const std::string& path, const std::vector<std::string>& prefixes) {
   if (prefixes.empty()) {
     return false;
@@ -256,100 +269,6 @@ Result<std::shared_ptr<Dataset>> FileSystemDatasetFactory::Finish(FinishOptions 
     ARROW_ASSIGN_OR_RAISE(auto partition, partitioning->Parse(fixed_path));
     ARROW_ASSIGN_OR_RAISE(auto fragment,
                           format_->MakeFragment({info, fs_}, partition, 1, schema));
-    fragments.push_back(fragment);
-  }
-
-  return FileSystemDataset::Make(schema, root_partition_, format_, fs_, fragments);
-}
-
-
-RandomAccessDatasetFactory::RandomAccessDatasetFactory(
-    std::vector<FileSource> files, std::shared_ptr<fs::FileSystem> filesystem,
-    std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options)
-    : files_(std::move(files)),
-      fs_(std::move(filesystem)),
-      format_(std::move(format)),
-      options_(std::move(options)) {}
-
-
-Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
-    std::shared_ptr<fs::FileSystem> filesystem, const std::vector<fs::FileInfo>& files,
-    std::shared_ptr<FileFormat> format, FileSystemFactoryOptions options) {
-  std::vector<FileSource> filtered_files;
-  for (const auto& info : files) {
-    if (options.exclude_invalid_files) {
-      ARROW_ASSIGN_OR_RAISE(auto supported,format->IsSupported(FileSource(info, filesystem)));
-      if (!supported)
-        continue;
-    }
-    filtered_files.emplace_back(info, filesystem);
-  }
-
-  return std::shared_ptr<DatasetFactory>(new RandomAccessDatasetFactory(std::move(filtered_files), std::move(filesystem),std::move(format), std::move(options)));
-}
-
-Result<std::shared_ptr<DatasetFactory>> RandomAccessDatasetFactory::Make(
-        std::string uri,
-        int64_t start_offset,
-        int64_t length,
-        std::shared_ptr<FileFormat> format,
-        FileSystemFactoryOptions options) {
-    std::string internal_path;
-    ARROW_ASSIGN_OR_RAISE(std::shared_ptr<fs::FileSystem> filesystem,
-                          arrow::fs::FileSystemFromUri(uri, &internal_path))
-    ARROW_ASSIGN_OR_RAISE(fs::FileInfo file_info, filesystem->GetFileInfo(internal_path))
-    return std::shared_ptr<DatasetFactory>(new RandomAccessDatasetFactory({FileSource(file_info.path(), filesystem, start_offset, length)},std::move(filesystem), std::move(format), std::move(options)));
-}
-
-Result<std::vector<std::shared_ptr<Schema>>> RandomAccessDatasetFactory::InspectSchemas(
-    InspectOptions options) {
-  std::vector<std::shared_ptr<Schema>> schemas;
-
-  const bool has_fragments_limit = options.fragments >= 0;
-  int fragments = options.fragments;
-  std::vector<std::string> paths;
-  for (const auto& src : files_) {
-    if (has_fragments_limit && fragments-- == 0) break;
-    ARROW_ASSIGN_OR_RAISE(auto schema, format_->Inspect(src));
-    schemas.push_back(schema);
-    paths.push_back(src.path());
-  }
-
-  ARROW_ASSIGN_OR_RAISE(auto partition_schema,
-                        options_.partitioning.GetOrInferSchema(
-                            StripPrefixAndFilename(paths, options_.partition_base_dir)));
-  schemas.push_back(partition_schema);
-
-  return schemas;
-}
-
-Result<std::shared_ptr<Dataset>> RandomAccessDatasetFactory::Finish(FinishOptions options) {
-  std::shared_ptr<Schema> schema = options.schema;
-  bool schema_missing = schema == nullptr;
-  if (schema_missing) {
-    ARROW_ASSIGN_OR_RAISE(schema, Inspect(options.inspect_options));
-  }
-
-  if (options.validate_fragments && !schema_missing) {
-    // If the schema was not explicitly provided we don't need to validate
-    // since Inspect has already succeeded in producing a valid unified schema.
-    ARROW_ASSIGN_OR_RAISE(auto schemas, InspectSchemas(options.inspect_options));
-    for (const auto& s : schemas) {
-      RETURN_NOT_OK(SchemaBuilder::AreCompatible({schema, s}));
-    }
-  }
-
-  std::shared_ptr<Partitioning> partitioning = options_.partitioning.partitioning();
-  if (partitioning == nullptr) {
-    auto factory = options_.partitioning.factory();
-    ARROW_ASSIGN_OR_RAISE(partitioning, factory->Finish(schema));
-  }
-
-  std::vector<std::shared_ptr<FileFragment>> fragments;
-  for (const auto& info : files_) {
-    auto fixed_path = StripPrefixAndFilename(info.path(), options_.partition_base_dir);
-    ARROW_ASSIGN_OR_RAISE(auto partition, partitioning->Parse(fixed_path));
-    ARROW_ASSIGN_OR_RAISE(auto fragment, format_->MakeFragment(info, partition, 1, schema));
     fragments.push_back(fragment);
   }
 
