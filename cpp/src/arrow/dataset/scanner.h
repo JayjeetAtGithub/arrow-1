@@ -169,6 +169,10 @@ class ARROW_DS_EXPORT Scanner {
   /// in a concurrent fashion and outlive the iterator.
   Result<ScanTaskIterator> Scan();
 
+  /// \brief Scan for better performance. Output data will not be guaranteed
+  /// to be filtered.
+  Result<ScanTaskIterator> ScanWithWeakFilter();
+
   /// \brief Convert a Scanner into a Table.
   ///
   /// Use this convenience utility with care. This will serially materialize the

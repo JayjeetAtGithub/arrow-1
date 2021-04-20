@@ -53,6 +53,7 @@ class FileWriter;
 class FileWriteOptions;
 class FileSystemDataset;
 class FileSystemDatasetFactory;
+class RandomAccessDatasetFactory;
 struct FileSystemDatasetWriteOptions;
 
 class InMemoryDataset;

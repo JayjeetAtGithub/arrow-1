@@ -149,6 +149,43 @@ class ARROW_EXPORT ProxyMemoryPool : public MemoryPool {
   std::unique_ptr<ProxyMemoryPoolImpl> impl_;
 };
 
+class ARROW_EXPORT ReservationListener {
+ public:
+  virtual ~ReservationListener();
+
+  virtual Status OnReservation(int64_t size) = 0;
+  virtual Status OnRelease(int64_t size) = 0;
+
+ protected:
+  ReservationListener();
+};
+
+class ARROW_EXPORT ReservationListenableMemoryPool : public MemoryPool {
+ public:
+  explicit ReservationListenableMemoryPool(MemoryPool* pool,
+                                           std::shared_ptr<ReservationListener> listener,
+                                           int64_t block_size = 8 * 1024 * 1024);
+  ~ReservationListenableMemoryPool() override;
+
+  Status Allocate(int64_t size, uint8_t** out) override;
+
+  Status Reallocate(int64_t old_size, int64_t new_size, uint8_t** ptr) override;
+
+  void Free(uint8_t* buffer, int64_t size) override;
+
+  int64_t bytes_allocated() const override;
+
+  int64_t max_memory() const override;
+
+  std::string backend_name() const override;
+
+  std::shared_ptr<ReservationListener> get_listener();
+
+ private:
+  class ReservationListenableMemoryPoolImpl;
+  std::unique_ptr<ReservationListenableMemoryPoolImpl> impl_;
+};
+
 /// \brief Return a process-wide memory pool based on the system allocator.
 ARROW_EXPORT MemoryPool* system_memory_pool();
 
