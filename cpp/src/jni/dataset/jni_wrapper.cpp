@@ -504,7 +504,6 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_closeScanTas
   scan_task_holder_.Erase(id);
 }
 
-#include <arrow/util/logging.h>
 /*
  * Class:     org_apache_arrow_dataset_jni_JniWrapper
  * Method:    scan
@@ -512,18 +511,11 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_closeScanTas
  */
 JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_scan(
     JNIEnv* env, jobject, jlong scan_task_id) {
-  ARROW_LOG(INFO) << "ARROWLOGGING: C++-side scan() reached";
   std::shared_ptr<arrow::dataset::ScanTask> scan_task =
       scan_task_holder_.Lookup(scan_task_id);
-  if (!scan_task) {
-    ARROW_LOG(ERROR) << "ARROWLOGGING: scantask(" + std::to_string(scan_task_id) + ") lookup found NULLPTR in memory pool!!!!!!!!!!!!!";
-  } else {
-    ARROW_LOG(INFO) << "ARROWLOGGING: scantask(" + std::to_string(scan_task_id) + ") lookup success.";
-  }
   JNI_ASSIGN_OR_THROW_WITH_FALLBACK(arrow::RecordBatchIterator record_batch_iterator,
       scan_task->Execute(),
       arrow::MakeEmptyIterator<std::shared_ptr<arrow::RecordBatch>>())
-  ARROW_LOG(INFO) << "ARROWLOGGING: scantask(" + std::to_string(scan_task_id) + ") execution all OK ";
   return iterator_holder_.Insert(std::make_shared<arrow::RecordBatchIterator>(
       std::move(record_batch_iterator)));  // move and propagate
 }

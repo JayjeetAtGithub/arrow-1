@@ -25,7 +25,6 @@
 #include "arrow/filesystem/util_internal.h"
 #include "arrow/util/checked_cast.h"
 #include "arrow/util/iterator.h"
-#include "arrow/util/logging.h"
 #include "parquet/arrow/reader.h"
 #include "parquet/file_reader.h"
 
@@ -42,40 +41,30 @@ class RadosParquetScanTask : public ScanTask {
         doa_(std::move(doa)) {}
 
   Result<RecordBatchIterator> Execute() override {
-    ARROW_LOG(INFO) << "ARROWLOGGING: scantask(x) executing...";
     ceph::bufferlist* in = new ceph::bufferlist();
     ceph::bufferlist* out = new ceph::bufferlist();
 
     Status s;
     struct stat st{};
-    ARROW_LOG(INFO) << "ARROWLOGGING: scantask(x) calling stat on: "+source_.path();
     s = doa_->Stat(source_.path(), st);
     if (!s.ok()) {
-      ARROW_LOG(INFO) << "ARROWLOGGING: scantask(x) stat failure for: "+source_.path() + ". MESSAGE: " + s.message();
       return Status::Invalid(s.message());
     }
-    ARROW_LOG(INFO) << "ARROWLOGGING: scantask(x) stat success for: "+source_.path();
 
     ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(
         options_->filter, options_->partition_expression, options_->projector.schema(),
         options_->dataset_schema, st.st_size, *in));
 
-    ARROW_LOG(INFO) << "ARROWLOGGING: Serialization success. Calling exec for: "+source_.path();
-
     s = doa_->Exec(st.st_ino, "scan_op", *in, *out);
     if (!s.ok()) {
-      ARROW_LOG(INFO) << "ARROWLOGGING: Exec failure: "+source_.path() + ". MESSAGE: " + s.message();
       return Status::ExecutionError(s.message());
     }
-
-    ARROW_LOG(INFO) << "ARROWLOGGING: Exec success. Reading buffer for: "+source_.path();
 
     RecordBatchVector batches;
     auto buffer = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
     auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
     ARROW_ASSIGN_OR_RAISE(auto rb_reader,
                           arrow::ipc::RecordBatchStreamReader::Open(buffer_reader));
-    ARROW_LOG(INFO) << "ARROWLOGGING: Reading buffer success for: "+source_.path();
 
     return IteratorFromReader(rb_reader);
   }
