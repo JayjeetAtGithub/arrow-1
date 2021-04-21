@@ -26,15 +26,11 @@ import org.apache.arrow.dataset.file.FileFormat;
 public class RadosDatasetFactory extends NativeDatasetFactory {
 
   public RadosDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String path) {
-    super(allocator, memoryPool, createNative(format, path_to_config, data_pool, user_name, cluster_name, path, -1L, -1L));
+    super(allocator, memoryPool, createNative(format, path_to_config, data_pool, user_name, cluster_name, path));
   }
 
-  public RadosDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String path, long startOffset, long length) {
-    super(allocator, memoryPool, createNative(format, path_to_config, data_pool, user_name, cluster_name, path, startOffset, length));
-  }
-
-  private static long createNative(FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String path, long startOffset, long length) {
-    return JniWrapper.get().makeRadosDatasetFactory(path_to_config, data_pool, user_name, cluster_name, "file://" + path, format.id(), startOffset, length);
+  private static long createNative(FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String path) {
+    return JniWrapper.get().makeRadosDatasetFactory(path_to_config, data_pool, user_name, cluster_name, "file://" + path, format.id());
   }
 
 }

@@ -681,7 +681,7 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeSingleFileDatasetFactory(
 
 //const std::string& ceph_config_path, const std::string& data_pool, const std::string& user_name, const std::string& cluster_name
 JNIEXPORT jlong JNICALL
-Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring uri, jint file_format_id, jlong start_offset, jlong length) {
+Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring uri, jint file_format_id) {
   std::shared_ptr<arrow::dataset::FileFormat> file_format;
   switch(file_format_id) {
     case FORMAT_PARQUET:
