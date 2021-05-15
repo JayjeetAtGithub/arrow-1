@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 #include "arrow/dataset/file_rados_parquet.h"
-
+#include <iostream>
 #include "arrow/api.h"
 #include "arrow/dataset/dataset_internal.h"
 #include "arrow/dataset/expression.h"
