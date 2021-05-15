@@ -61,8 +61,10 @@ class RadosParquetScanTask : public ScanTask {
       return Status::ExecutionError(s.message());
     }
 
+    std::shared_ptr<CPUDevice> device = std::make_shared<CPUDevice>();
+
     ARROW_ASSIGN_OR_RAISE(auto buf, AllocateBuffer(out->length()));
-    ARROW_ASSIGN_OR_RAISE(auto managed_buffer, Buffer::Copy(buf));
+    ARROW_ASSIGN_OR_RAISE(auto managed_buffer, Buffer::Copy(buf, device->default_memory_manager()));
     
     delete out;
 
