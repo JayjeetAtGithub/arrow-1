@@ -58,13 +58,13 @@ class RadosParquetScanTask : public ScanTask {
         options_->filter, options_->partition_expression, options_->projector.schema(),
         options_->dataset_schema, st.st_size, in));
 
-    ceph::bufferptr out(ceph::buffer::create_static(len, mutable_buffer->mutable_data()));
+    ceph::bufferptr out(ceph::buffer::create_static(100*1024*1024, mutable_buffer->mutable_data()));
     s = doa_->Exec(st.st_ino, "scan_op", in, out);
     if (!s.ok()) {
       return Status::ExecutionError(s.message());
     }
 
-    std::shared_ptr<Buffer> buf = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
+    std::shared_ptr<Buffer> buf = std::make_shared<Buffer>((uint8_t*)out.c_str(), out.length());
 
     RecordBatchVector batches;
     auto buffer_reader = std::make_shared<io::BufferReader>(buf);
