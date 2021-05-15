@@ -62,7 +62,7 @@ class RadosParquetScanTask : public ScanTask {
     }
 
     std::shared_ptr<CPUDevice> device = std::make_shared<CPUDevice>();
-    std::shared_ptr<CPUMemoryManager> memory_manager = CPUMemoryManager::Make(device);
+    std::shared_ptr<MemoryManager> memory_manager = CPUMemoryManager::Make(device);
 
     ARROW_ASSIGN_OR_RAISE(auto buf, memory_manager->AllocateBuffer(out->length()));
     ARROW_ASSIGN_OR_RAISE(auto managed_buffer, Buffer::Copy(buf, memory_manager));
