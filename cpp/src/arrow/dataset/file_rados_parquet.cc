@@ -59,7 +59,10 @@ class RadosParquetScanTask : public ScanTask {
         options_->dataset_schema, st.st_size, in));
 
     ceph::bufferptr out(ceph::buffer::create_static(100*1024*1024, (char*)mutable_buffer->mutable_data()));
-    s = doa_->Exec(st.st_ino, "scan_op", in, out);
+    ceph::bufferlist out_bl;
+    out_bl.append(out);
+
+    s = doa_->Exec(st.st_ino, "scan_op", in, out_bl);
     if (!s.ok()) {
       return Status::ExecutionError(s.message());
     }
