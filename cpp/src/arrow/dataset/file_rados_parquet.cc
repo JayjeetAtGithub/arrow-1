@@ -52,24 +52,25 @@ class RadosParquetScanTask : public ScanTask {
       return Status::Invalid(s.message());
     }
 
+    std::shared_ptr<Device> device = CPUDevice::Instance();
+    std::shared_ptr<MemoryManager> memory_manager = device->default_memory_manager();
+    ARROW_ASSIGN_OR_RAISE(auto mutable_buffer, memory_manager->AllocateBuffer(100*1024*1024));
+
+    ceph::bufferlist in;
     ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(
         options_->filter, options_->partition_expression, options_->projector.schema(),
-        options_->dataset_schema, st.st_size, *in));
+        options_->dataset_schema, st.st_size, in));
 
-    s = doa_->Exec(st.st_ino, "scan_op", *in, *out);
+    ceph::bufferptr out(ceph::buffer::create_static(len, mutable_buffer->mutable_data()));
+    s = doa_->Exec(st.st_ino, "scan_op", in, out);
     if (!s.ok()) {
       return Status::ExecutionError(s.message());
     }
 
-    std::shared_ptr<Device> device = CPUDevice::Instance();
-    std::shared_ptr<MemoryManager> memory_manager = device->default_memory_manager();
     std::shared_ptr<Buffer> buf = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
-    ARROW_ASSIGN_OR_RAISE(auto managed_buffer, Buffer::View(buf, memory_manager));
-
-    delete out;
 
     RecordBatchVector batches;
-    auto buffer_reader = std::make_shared<io::BufferReader>(managed_buffer);
+    auto buffer_reader = std::make_shared<io::BufferReader>(buf);
     auto options = ipc::IpcReadOptions::Defaults();
     options.use_threads = false;
     ARROW_ASSIGN_OR_RAISE(auto rb_reader,
