@@ -61,7 +61,7 @@ class RadosParquetScanTask : public ScanTask {
       return Status::ExecutionError(s.message());
     }
 
-    std::shared_ptr<CPUDevice> device = std::make_shared<CPUDevice>();
+    std::shared_ptr<Device> device = CPUDevice::Instance();
     auto memory_pool = MemoryPool::CreateDefault();
     std::shared_ptr<MemoryManager> memory_manager = device->memory_manager(memory_pool.get());
 
