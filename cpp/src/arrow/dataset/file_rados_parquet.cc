@@ -61,7 +61,7 @@ class RadosParquetScanTask : public ScanTask {
     ceph::bufferptr out(ceph::buffer::create_static(100*1024*1024, (char*)mutable_buffer->mutable_data()));
     ceph::bufferlist out_bl;
     std::cerr << out.length() << "\n";
-    std::cerr << mutable_buffer->length() << "\n";
+    std::cerr << mutable_buffer->size() << "\n";
     out_bl.append(out.c_str(), out.length());
 
     s = doa_->Exec(st.st_ino, "scan_op", in, out_bl);
