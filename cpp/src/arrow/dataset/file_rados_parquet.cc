@@ -61,9 +61,13 @@ class RadosParquetScanTask : public ScanTask {
       return Status::ExecutionError(s.message());
     }
 
+    ARROW_ASSIGN_OR_RAISE(auto buf, AllocateBuffer(out->length()));
+    ARROW_ASSIGN_OR_RAISE(auto managed_buffer, Buffer::Copy(buf));
+    
+    delete out;
+
     RecordBatchVector batches;
-    auto buffer = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
-    auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
+    auto buffer_reader = std::make_shared<io::BufferReader>(managed_buffer);
     auto options = ipc::IpcReadOptions::Defaults();
     options.use_threads = false;
     ARROW_ASSIGN_OR_RAISE(auto rb_reader,
