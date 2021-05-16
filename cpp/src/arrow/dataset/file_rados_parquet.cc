@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 #include "arrow/dataset/file_rados_parquet.h"
-
+#include <iostream>
 #include "arrow/api.h"
 #include "arrow/dataset/dataset_internal.h"
 #include "arrow/dataset/expression.h"
@@ -42,9 +42,6 @@ class RadosParquetScanTask : public ScanTask {
         doa_(std::move(doa)) {}
 
   Result<RecordBatchIterator> Execute() override {
-    ceph::bufferlist* in = new ceph::bufferlist();
-    ceph::bufferlist* out = new ceph::bufferlist();
-
     Status s;
     struct stat st {};
     s = doa_->Stat(source_.path(), st);
@@ -52,18 +49,30 @@ class RadosParquetScanTask : public ScanTask {
       return Status::Invalid(s.message());
     }
 
+    std::shared_ptr<Device> device = CPUDevice::Instance();
+    std::shared_ptr<MemoryManager> memory_manager = device->default_memory_manager();
+    ARROW_ASSIGN_OR_RAISE(auto mutable_buffer, memory_manager->AllocateBuffer(100*1024*1024));
+
+    ceph::bufferlist in;
     ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(
         options_->filter, options_->partition_expression, options_->projector.schema(),
-        options_->dataset_schema, st.st_size, *in));
+        options_->dataset_schema, st.st_size, in));
 
-    s = doa_->Exec(st.st_ino, "scan_op", *in, *out);
+    ceph::bufferptr out(ceph::buffer::create_static(100*1024*1024, (char*)mutable_buffer->mutable_data()));
+    ceph::bufferlist out_bl;
+    std::cerr << out.length() << "\n";
+    std::cerr << mutable_buffer->size() << "\n";
+    out_bl.append(out.c_str(), out.length());
+
+    s = doa_->Exec(st.st_ino, "scan_op", in, out_bl);
     if (!s.ok()) {
       return Status::ExecutionError(s.message());
     }
 
+    std::shared_ptr<Buffer> buf = std::make_shared<Buffer>((uint8_t*)out.c_str(), out.length());
+
     RecordBatchVector batches;
-    auto buffer = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
-    auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
+    auto buffer_reader = std::make_shared<io::BufferReader>(buf);
     auto options = ipc::IpcReadOptions::Defaults();
     options.use_threads = false;
     ARROW_ASSIGN_OR_RAISE(auto rb_reader,
