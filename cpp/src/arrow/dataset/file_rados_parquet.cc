@@ -25,6 +25,7 @@
 #include "arrow/filesystem/util_internal.h"
 #include "arrow/util/checked_cast.h"
 #include "arrow/util/iterator.h"
+#include "arrow/util/logging.h"
 #include "parquet/arrow/reader.h"
 #include "parquet/file_reader.h"
 
@@ -45,7 +46,7 @@ class RadosParquetScanTask : public ScanTask {
     ceph::bufferlist* out = new ceph::bufferlist();
 
     Status s;
-    struct stat st{};
+    struct stat st {};
     s = doa_->Stat(source_.path(), st);
     if (!s.ok()) {
       return Status::Invalid(s.message());
@@ -63,9 +64,10 @@ class RadosParquetScanTask : public ScanTask {
     RecordBatchVector batches;
     auto buffer = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
     auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
+    auto options = ipc::IpcReadOptions::Defaults();
+    options.use_threads = false;
     ARROW_ASSIGN_OR_RAISE(auto rb_reader,
-                          arrow::ipc::RecordBatchStreamReader::Open(buffer_reader));
-
+                          arrow::ipc::RecordBatchStreamReader::Open(buffer_reader, options));
     return IteratorFromReader(rb_reader);
   }
 
