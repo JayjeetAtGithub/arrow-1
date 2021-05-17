@@ -116,14 +116,14 @@ class ARROW_DS_EXPORT DirectObjectAccess {
     ss << std::hex << inode;
     std::string oid(ss.str() + ".00000000");
 
-     ARROW_LOG(INFO) << "Exec called for inode: " << inode << ", oid: " << oid << ", cluster cls_name: " << cluster_->cls_name.c_str() << ", fn name: "<< fn.c_str() << '\n';
-
+     ARROW_LOG(ERROR) << "Exec called for inode: " << inode << ", oid: " << oid << ", cluster cls_name: " << cluster_->cls_name.c_str() << ", fn name: "<< fn.c_str() << '\n';
+     std::cout << std::flush;
      auto code = cluster_->ioCtx->exec(oid.c_str(), cluster_->cls_name.c_str(), fn.c_str(), in, out);
      if (code) {
-       ARROW_LOG(INFO) << "Failure: librados::exec returned non-zero exit code "+std::to_string(code) << '\n';
+       ARROW_LOG(ERROR) << "Failure: librados::exec returned non-zero exit code "+std::to_string(code) << '\n';
        return Status::ExecutionError("librados::exec returned non-zero exit code "+std::to_string(code));
      }
-    ARROW_LOG(INFO) << "Exec success!";
+    ARROW_LOG(ERROR) << "Exec success!";
     return Status::OK();
   }
 
