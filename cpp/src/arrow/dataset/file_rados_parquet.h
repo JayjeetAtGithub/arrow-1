@@ -116,7 +116,7 @@ class ARROW_DS_EXPORT DirectObjectAccess {
     ss << std::hex << inode;
     std::string oid(ss.str() + ".00000000");
 
-     ARROW_LOG(INFO) << "Exec called for inode: " << st.st_ino << ", oid: " << oid << ", cluster cls_name: " << cluster_->cls_name.c_str() << ", fn name: "<< fn.c_str() << '\n';
+     ARROW_LOG(INFO) << "Exec called for inode: " << inode << ", oid: " << oid << ", cluster cls_name: " << cluster_->cls_name.c_str() << ", fn name: "<< fn.c_str() << '\n';
 
      auto code = cluster_->ioCtx->exec(oid.c_str(), cluster_->cls_name.c_str(), fn.c_str(), in, out)
      if (code) {
