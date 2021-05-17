@@ -123,7 +123,7 @@ class ARROW_DS_EXPORT DirectObjectAccess {
        ARROW_LOG(INFO) << "Failure: librados::exec returned non-zero exit code "+std::to_string(code) << '\n';
        return Status::ExecutionError("librados::exec returned non-zero exit code "+std::to_string(code));
      }
-    ARROW_LOG(INFO) << "Exec success!";
+    ARROW_LOG(INFO) << "Exec success!"
     return Status::OK();
   }
 
