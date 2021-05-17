@@ -46,7 +46,7 @@
 #include "arrow/util/iterator.h"
 
 #include <arrow/util/logging.h>
-
+#include <iostream>
 namespace arrow {
 namespace dataset {
 
