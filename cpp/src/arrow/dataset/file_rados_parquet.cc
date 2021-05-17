@@ -25,7 +25,7 @@
 #include "arrow/filesystem/util_internal.h"
 #include "arrow/util/checked_cast.h"
 #include "arrow/util/iterator.h"
-#include "arrow/util/logging.h"
+#include <arrow/util/logging.h>
 #include "parquet/arrow/reader.h"
 #include "parquet/file_reader.h"
 
@@ -47,16 +47,22 @@ class RadosParquetScanTask : public ScanTask {
 
     Status s;
     struct stat st {};
+    ARROW_LOG(INFO) << "Performing stat...\n";
     s = doa_->Stat(source_.path(), st);
     if (!s.ok()) {
       return Status::Invalid(s.message());
     }
+    ARROW_LOG(INFO) << "Stat ok! st_size: " << st.st_size << ", inode: " << st.st_ino << '\n';
+    ARROW_LOG(INFO) << "Projection: " << options_->projector.schema()->ToString() << '\n';
+    ARROW_LOG(INFO) << "Dataset schema: " << options_->dataset_schema->ToString() << '\n';
 
     ARROW_RETURN_NOT_OK(SerializeScanRequestToBufferlist(
         options_->filter, options_->partition_expression, options_->projector.schema(),
         options_->dataset_schema, st.st_size, *in));
 
+    ARROW_LOG(INFO) << "Serialization ok!\n";
     s = doa_->Exec(st.st_ino, "scan_op", *in, *out);
+    ARROW_LOG(INFO) << "Exec did not crash.\n";
     if (!s.ok()) {
       return Status::ExecutionError(s.message());
     }
@@ -65,9 +71,11 @@ class RadosParquetScanTask : public ScanTask {
     auto buffer = std::make_shared<Buffer>((uint8_t*)out->c_str(), out->length());
     auto buffer_reader = std::make_shared<io::BufferReader>(buffer);
     auto options = ipc::IpcReadOptions::Defaults();
+    ARROW_LOG(INFO) << "Buffer creation OK.\n";
     options.use_threads = false;
     ARROW_ASSIGN_OR_RAISE(auto rb_reader,
                           arrow::ipc::RecordBatchStreamReader::Open(buffer_reader, options));
+    ARROW_LOG(INFO) << "Buffer reading ok.\n";
     return IteratorFromReader(rb_reader);
   }
 
