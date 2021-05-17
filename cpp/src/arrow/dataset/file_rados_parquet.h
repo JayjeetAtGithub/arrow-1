@@ -45,8 +45,6 @@
 #include "arrow/filesystem/path_util.h"
 #include "arrow/util/iterator.h"
 
-#include <arrow/util/logging.h>
-
 namespace arrow {
 namespace dataset {
 
@@ -116,14 +114,11 @@ class ARROW_DS_EXPORT DirectObjectAccess {
     ss << std::hex << inode;
     std::string oid(ss.str() + ".00000000");
 
-     ARROW_LOG(INFO) << "Exec called for inode: " << st.st_ino << ", oid: " << oid << ", cluster cls_name: " << cluster_->cls_name.c_str() << ", fn name: "<< fn.c_str() << '\n';
+    if (cluster_->ioCtx->exec(oid.c_str(), cluster_->cls_name.c_str(), fn.c_str(), in,
+                              out)) {
+      return Status::ExecutionError("librados::exec returned non-zero exit code.");
+    }
 
-     auto code = cluster_->ioCtx->exec(oid.c_str(), cluster_->cls_name.c_str(), fn.c_str(), in, out)
-     if (code) {
-       ARROW_LOG(INFO) << "Failure: librados::exec returned non-zero exit code "+std::to_string(code) << '\n';
-       return Status::ExecutionError("librados::exec returned non-zero exit code "+std::to_string(code));
-     }
-    ARROW_LOG(INFO) << "Exec success!"
     return Status::OK();
   }
 
