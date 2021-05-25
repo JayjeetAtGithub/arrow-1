@@ -38,7 +38,6 @@ add_jar(arrow_dataset_java
         src/main/java/org/apache/arrow/dataset/rados/JniWrapper.java
         src/main/java/org/apache/arrow/dataset/jni/NativeMemoryPool.java
         src/main/java/org/apache/arrow/dataset/jni/ReservationListener.java
-        GENERATE_NATIVE_HEADERS
-        arrow_dataset_java-native
-        DESTINATION
-        ${JNI_HEADERS_DIR})
+        GENERATE_NATIVE_HEADERS arrow_dataset_java-native
+        DESTINATION ${JNI_HEADERS_DIR}
+)

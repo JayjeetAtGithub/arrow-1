@@ -17,6 +17,8 @@
 
 package org.apache.arrow.dataset.scanner;
 
+import org.apache.arrow.dataset.filter.Filter;
+
 /**
  * Options used during scanning.
  */

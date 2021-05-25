@@ -688,7 +688,6 @@
         <module>dataset</module>
         <module>adapter/orc</module>
         <module>gandiva</module>
-        <module>dataset</module>
       </modules>
     </profile>
 

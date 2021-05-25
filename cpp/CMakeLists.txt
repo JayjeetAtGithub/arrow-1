@@ -96,6 +96,8 @@ message(STATUS "Arrow SO version: ${ARROW_SO_VERSION} (full: ${ARROW_FULL_SO_VER
 set(ARROW_SOURCE_DIR ${PROJECT_SOURCE_DIR})
 set(ARROW_BINARY_DIR ${PROJECT_BINARY_DIR})
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules")
+
 include(CMakePackageConfigHelpers)
 include(CMakeParseArguments)
 include(ExternalProject)

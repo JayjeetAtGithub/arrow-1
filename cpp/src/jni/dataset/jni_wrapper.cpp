@@ -25,6 +25,10 @@
 #include "arrow/ipc/api.h"
 #include "arrow/util/iterator.h"
 
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/message.h>
+#include <jni/dataset/DTypes.pb.h>
+
 #include "jni/dataset/jni_util.h"
 
 #include "org_apache_arrow_dataset_file_JniWrapper.h"
