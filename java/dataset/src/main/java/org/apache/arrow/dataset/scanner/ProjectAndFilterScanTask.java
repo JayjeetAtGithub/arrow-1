@@ -41,8 +41,13 @@ public class ProjectAndFilterScanTask implements ScanTask {
   }
 
   @Override
-  public BatchIterator scan() {
+  public BatchIterator execute() {
     // TODO UNIMPLEMENTED
-    return delegate.scan();
+    return delegate.execute();
+  }
+
+  @Override
+  public void close() throws Exception {
+    delegate.close();
   }
 }

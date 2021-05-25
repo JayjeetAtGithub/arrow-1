@@ -26,13 +26,19 @@ import org.apache.arrow.memory.BufferAllocator;
  */
 public class FileSystemDatasetFactory extends NativeDatasetFactory {
 
+
   public FileSystemDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format,
-      String uri) {
-    super(allocator, memoryPool, createNative(format, uri));
+                                  FileSystem fs, String path) {
+    super(allocator, memoryPool, createNative(format, fs, path, -1L, -1L));
   }
 
-  private static long createNative(FileFormat format, String uri) {
-    return JniWrapper.get().makeFileSystemDatasetFactory(uri, format.id());
+  public FileSystemDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format,
+                                  FileSystem fs, String path, long startOffset, long length) {
+    super(allocator, memoryPool, createNative(format, fs, path, startOffset, length));
   }
 
+  private static long createNative(FileFormat format, FileSystem fs, String path, long startOffset, long length) {
+    return JniWrapper.get().makeFileSystemDatasetFactory(fs.protocal() + "://" + path,
+            format.id(), startOffset, length);
+  }
 }

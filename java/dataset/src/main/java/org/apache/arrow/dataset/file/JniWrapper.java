@@ -44,7 +44,7 @@ public class JniWrapper {
    * @return the native pointer of the arrow::dataset::FileSystemDatasetFactory instance.
    * @see FileFormat
    */
-  public native long makeSingleFileDatasetFactory(String path, int fileFormat,
+  public native long makeFileSystemDatasetFactory(String path, int fileFormat,
       long startOffset, long length);
 
 }
