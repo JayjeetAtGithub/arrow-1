@@ -43,7 +43,8 @@ set_source_files_properties(${PROTO_OUTPUT_FILES} PROPERTIES GENERATED TRUE)
 
 get_filename_component(ABS_ARROW_DATASET_PROTO
                        ${CMAKE_SOURCE_DIR}/src/jni/dataset/proto/DTypes.proto ABSOLUTE)
-set(CMAKE_VERBOSE_MAKEFILE on)
+set(CMAKE_VERBOSE_MAKEFILE on) #TODO Sebastiaan: Turn verbose off once we know why we cannot trigger protobuf_ep
+message("Protobuf protoc evaluates to '${ARROW_PROTOBUF_PROTOC}'")
 add_custom_command(OUTPUT ${PROTO_OUTPUT_FILES}
                    COMMAND ${ARROW_PROTOBUF_PROTOC}
                            --proto_path

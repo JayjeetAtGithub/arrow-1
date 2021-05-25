@@ -268,6 +268,16 @@ void JNI_OnUnload(JavaVM* vm, void* reserved) {
   default_memory_pool_id = -1L;
 }
 
+bool ParseProtobuf(uint8_t* buf, int bufLen, google::protobuf::Message* msg) {
+    google::protobuf::io::CodedInputStream cis(buf, bufLen);
+    cis.SetRecursionLimit(1000);
+    return msg->ParseFromCodedStream(&cis);
+}
+
+void releaseFilterInput(jbyteArray condition_arr, jbyte* condition_bytes, JNIEnv* env) {
+    env->ReleaseByteArrayElements(condition_arr, condition_bytes, JNI_ABORT);
+}
+
 /*
  * Class:     org_apache_arrow_dataset_jni_NativeMemoryPool
  * Method:    getDefaultMemoryPool
@@ -409,7 +419,7 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_closeDataset
  * Signature: (J[Ljava/lang/String;JJ)J
  */
 JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScanner(
-    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jlong batch_size,
+    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jbyteArray filter, jlong batch_size,
     jlong memory_pool_id) {
   JNI_METHOD_START
   arrow::MemoryPool* pool = reinterpret_cast<arrow::MemoryPool*>(memory_pool_id);
@@ -428,6 +438,18 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScann
   }
   JniAssertOkOrThrow(scanner_builder->BatchSize(batch_size));
 
+  // initialize filters
+  jsize exprs_len = env->GetArrayLength(filter);
+  jbyte* exprs_bytes = env->GetByteArrayElements(filter, 0);
+  arrow::dataset::types::Condition condition;
+  if (!ParseProtobuf(reinterpret_cast<uint8_t*>(exprs_bytes), exprs_len, &condition)) {
+    releaseFilterInput(filter, exprs_bytes, env);
+    std::string error_message = "bad protobuf message";
+    env->ThrowNew(illegal_argument_exception_class, error_message.c_str());
+  }
+  if (condition.has_root()) {
+    JNI_ASSERT_OK_OR_THROW(scanner_builder->Filter(translateFilter(condition, env)));
+  }
   auto scanner = JniGetOrThrow(scanner_builder->Finish());
   std::shared_ptr<DisposableScannerAdaptor> scanner_adaptor =
       JniGetOrThrow(DisposableScannerAdaptor::Create(scanner));
