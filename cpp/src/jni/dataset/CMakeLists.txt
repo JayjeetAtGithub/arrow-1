@@ -36,7 +36,7 @@ set(ARROW_BUILD_STATIC OFF)
 
 set(ARROW_DATASET_JNI_LIBS arrow_dataset_static)
 
-set(ARROW_DATASET_JNI_SOURCES jni_wrapper.cc jni_util.cc)
+set(ARROW_DATASET_JNI_SOURCES jni_wrapper.cpp jni_util.cc)
 
 add_arrow_lib(arrow_dataset_jni
               BUILD_SHARED
