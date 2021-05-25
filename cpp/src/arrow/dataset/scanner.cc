@@ -415,17 +415,6 @@ Result<ScanTaskIterator> SyncScanner::ScanInternal() {
   return GetScanTaskIterator(std::move(fragment_it), scan_options_);
 }
 
-Result<ScanTaskIterator> Scanner::ScanWithWeakFilter() {
-  ARROW_ASSIGN_OR_RAISE(auto fragment_it, GetFragments())
-  ARROW_ASSIGN_OR_RAISE(auto scan_task_it, GetScanTaskIterator(std::move(fragment_it),
-      scan_options_, scan_context_))
-
-  auto wrap_scan_task = [](std::shared_ptr<ScanTask> task) -> std::shared_ptr<ScanTask> {
-    return std::make_shared<ProjectScanTask>(std::move(task));
-  };
-  return MakeMapIterator(wrap_scan_task, std::move(scan_task_it));
-}
-
 Result<ScanTaskIterator> ScanTaskIteratorFromRecordBatch(
     std::vector<std::shared_ptr<RecordBatch>> batches,
     std::shared_ptr<ScanOptions> options) {

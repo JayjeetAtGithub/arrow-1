@@ -85,12 +85,15 @@ Result<std::shared_ptr<io::InputStream>> FileSource::OpenCompressed(
 }
 
 Future<util::optional<int64_t>> FileFormat::CountRows(
-        const std::shared_ptr<FileFragment>&, compute::Expression, std::shared_ptr<ScanOptions>) {
+    const std::shared_ptr<FileFragment>&, compute::Expression,
+    std::shared_ptr<ScanOptions>) {
   return Future<util::optional<int64_t>>::MakeFinished(util::nullopt);
 }
 
-Result<std::shared_ptr<FileFragment>> FileFormat::MakeFragment(FileSource source, std::shared_ptr<Schema> physical_schema) {
-  return MakeFragment(std::move(source), compute::literal(true), std::move(physical_schema));
+Result<std::shared_ptr<FileFragment>> FileFormat::MakeFragment(
+    FileSource source, std::shared_ptr<Schema> physical_schema) {
+  return MakeFragment(std::move(source), compute::literal(true),
+                      std::move(physical_schema));
 }
 
 Result<std::shared_ptr<FileFragment>> FileFormat::MakeFragment(

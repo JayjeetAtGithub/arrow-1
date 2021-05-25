@@ -176,10 +176,6 @@ class ARROW_DS_EXPORT FileFormat : public std::enable_shared_from_this<FileForma
       FileSource source, compute::Expression partition_expression, int flag,
       std::shared_ptr<Schema> dataset_schema);
 
-  Result<std::shared_ptr<FileFragment>> MakeFragment( //TODO Sebas: Implementation exists?
-      FileSource source, Expression partition_expression, int flag,
-      std::shared_ptr<Schema> dataset_schema);
-
   Result<std::shared_ptr<FileFragment>> MakeFragment(
       FileSource source, std::shared_ptr<Schema> physical_schema = NULLPTR);
 
@@ -203,7 +199,7 @@ class ARROW_DS_EXPORT FileFragment : public Fragment {
 
   std::string type_name() const override { return format_->type_name(); }
   std::string ToString() const override { return source_.path(); };
-  bool splittable() const override { return format_->splittable(); }
+//  bool splittable() const override { return format_->splittable(); } // TODO Sebastiaan: Need splittable properties?
 
   const FileSource& source() const { return source_; }
   const std::shared_ptr<FileFormat>& format() const { return format_; }
