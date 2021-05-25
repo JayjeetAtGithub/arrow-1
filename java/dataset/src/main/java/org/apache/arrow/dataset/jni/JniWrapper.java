@@ -18,7 +18,7 @@
 package org.apache.arrow.dataset.jni;
 
 /**
- * JNI wrapper for Datasets API's native implementation.
+ * JNI wrapper for Dataset API's native implementation.
  */
 public class JniWrapper {
 
@@ -32,30 +32,74 @@ public class JniWrapper {
     JniLoader.get().ensureLoaded();
   }
 
+  /**
+   * Release the DatasetFactory by destroying its reference held by JNI wrapper.
+   *
+   * @param datasetFactoryId the native pointer of the arrow::dataset::DatasetFactory instance.
+   */
   public native void closeDatasetFactory(long datasetFactoryId);
 
+  /**
+   * Get a serialized schema from native instance of a DatasetFactory.
+   *
+   * @param datasetFactoryId the native pointer of the arrow::dataset::DatasetFactory instance.
+   * @return the serialized schema
+   * @see org.apache.arrow.vector.types.pojo.Schema
+   */
   public native byte[] inspectSchema(long datasetFactoryId);
 
+  /**
+   * Create Dataset from a DatasetFactory and get the native pointer of the Dataset.
+   *
+   * @param datasetFactoryId the native pointer of the arrow::dataset::DatasetFactory instance.
+   * @param schema the predefined schema of the resulting Dataset.
+   * @return the native pointer of the arrow::dataset::Dataset instance.
+   */
   public native long createDataset(long datasetFactoryId, byte[] schema);
 
+  /**
+   * Release the Dataset by destroying its reference held by JNI wrapper.
+   *
+   * @param datasetId the native pointer of the arrow::dataset::Dataset instance.
+   */
   public native void closeDataset(long datasetId);
 
-  public native long createScanner(long datasetId, String[] columns, byte[] filter, long batchSize, long memoryPool);
+  /**
+   * Create Scanner from a Dataset and get the native pointer of the Dataset.
+   * @param datasetId the native pointer of the arrow::dataset::Dataset instance.
+   * @param columns desired column names. Columns not in this list will not be emitted when performing scan operation.
+   * @param batchSize batch size of scanned record batches.
+   * @param memoryPool identifier of memory pool used in the native scanner.
+   * @return the native pointer of the arrow::dataset::Scanner instance.
+   */
+  public native long createScanner(long datasetId, String[] columns, long batchSize, long memoryPool);
 
+  /**
+   * Get a serialized schema from native instance of a Scanner.
+   *
+   * @param scannerId the native pointer of the arrow::dataset::Scanner instance.
+   * @return the serialized schema
+   * @see org.apache.arrow.vector.types.pojo.Schema
+   */
   public native byte[] getSchemaFromScanner(long scannerId);
 
-  public native long[] getScanTasksFromScanner(long scannerId);
-
+  /**
+   * Release the Scanner by destroying its reference held by JNI wrapper.
+   * @param scannerId the native pointer of the arrow::dataset::Scanner instance.
+   */
   public native void closeScanner(long scannerId);
 
-  public native void closeScanTask(long scanTaskId);
+  /**
+   * Read next record batch from the specified scanner.
+   * @param scannerId the native pointer of the arrow::dataset::Scanner instance.
+   * @return an instance of {@link NativeRecordBatchHandle} describing the overall layout of the native record batch.
+   */
+  public native NativeRecordBatchHandle nextRecordBatch(long scannerId);
 
-  public native long scan(long scanTaskId);
-
-  public native NativeRecordBatchHandle[] nextRecordBatch(long recordBatchIteratorId);
-
-  public native void closeIterator(long id);
-
+  /**
+   * Release the Buffer by destroying its reference held by JNI wrapper.
+   * @param bufferId the native pointer of the arrow::Buffer instance.
+   */
   public native void releaseBuffer(long bufferId);
 
 }

@@ -21,32 +21,49 @@ import java.io.IOException;
 
 import org.apache.arrow.dataset.source.DatasetFactory;
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.NativeContext;
-import org.apache.arrow.util.SchemaUtils;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.arrow.vector.util.SchemaUtility;
 
 /**
  * Native implementation of {@link DatasetFactory}.
  */
-public class NativeDatasetFactory implements DatasetFactory, AutoCloseable {
+public class NativeDatasetFactory implements DatasetFactory {
+  private final long datasetFactoryId;
   private final NativeMemoryPool memoryPool;
-  private final long dataSourceDiscoveryId;
   private final BufferAllocator allocator;
+
+  private boolean closed = false;
 
   /**
    * Constructor.
+   *
+   * @param allocator a context allocator associated with this factory. Any buffer that will be created natively will
+   *                  be then bound to this allocator.
+   * @param memoryPool the native memory pool associated with this factory. Any buffer created natively should request
+   *                   for memory spaces from this memory pool. This is a mapped instance of c++ arrow::MemoryPool.
+   * @param datasetFactoryId an ID, at the same time the native pointer of the underlying native instance of this
+   *                         factory. Make sure in c++ side  the pointer is pointing to the shared pointer wrapping
+   *                         the actual instance so we could successfully decrease the reference count once
+   *                         {@link #close} is called.
+   * @see #close()
    */
-  public NativeDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, long dataSourceDiscoveryId) {
+  public NativeDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, long datasetFactoryId) {
     this.allocator = allocator;
     this.memoryPool = memoryPool;
-    this.dataSourceDiscoveryId = dataSourceDiscoveryId;
+    this.datasetFactoryId = datasetFactoryId;
   }
 
   @Override
   public Schema inspect() {
-    byte[] buffer = JniWrapper.get().inspectSchema(dataSourceDiscoveryId);
+    final byte[] buffer;
+    synchronized (this) {
+      if (closed) {
+        throw new NativeInstanceReleasedException();
+      }
+      buffer = JniWrapper.get().inspectSchema(datasetFactoryId);
+    }
     try {
-      return SchemaUtils.get().deserialize(buffer, allocator);
+      return SchemaUtility.deserialize(buffer, allocator);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
@@ -60,16 +77,28 @@ public class NativeDatasetFactory implements DatasetFactory, AutoCloseable {
   @Override
   public NativeDataset finish(Schema schema) {
     try {
-      byte[] serialized = SchemaUtils.get().serialize(schema);
-      return new NativeDataset(new NativeContext(allocator, memoryPool),
-          JniWrapper.get().createDataset(dataSourceDiscoveryId, serialized));
+      byte[] serialized = SchemaUtility.serialize(schema);
+      synchronized (this) {
+        if (closed) {
+          throw new NativeInstanceReleasedException();
+        }
+        return new NativeDataset(new NativeContext(allocator, memoryPool),
+            JniWrapper.get().createDataset(datasetFactoryId, serialized));
+      }
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
+  /**
+   * Close this factory by release the pointer of the native instance.
+   */
   @Override
-  public void close() {
-    JniWrapper.get().closeDatasetFactory(dataSourceDiscoveryId);
+  public synchronized void close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    JniWrapper.get().closeDatasetFactory(datasetFactoryId);
   }
 }

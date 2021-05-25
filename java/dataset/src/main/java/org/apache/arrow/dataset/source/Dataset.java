@@ -17,16 +17,19 @@
 
 package org.apache.arrow.dataset.source;
 
-import org.apache.arrow.dataset.fragment.DataFragment;
 import org.apache.arrow.dataset.scanner.ScanOptions;
 import org.apache.arrow.dataset.scanner.Scanner;
 
 /**
  * A container of Fragments which are the internal iterable unit of read data.
  */
-public interface Dataset {
+public interface Dataset extends AutoCloseable {
 
+  /**
+   * Create a new Scanner using the provided scan options.
+   *
+   * @param options options used during creating Scanner
+   * @return the Scanner instance
+   */
   Scanner newScan(ScanOptions options);
-
-  Iterable<? extends DataFragment> getFragments(ScanOptions options);
 }

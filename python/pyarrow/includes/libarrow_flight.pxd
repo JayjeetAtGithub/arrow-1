@@ -151,6 +151,10 @@ cdef extern from "arrow/flight/api.h" namespace "arrow" nogil:
         CStatus Next(CFlightStreamChunk* out)
         CStatus ReadAll(shared_ptr[CTable]* table)
 
+    CResult[shared_ptr[CRecordBatchReader]] MakeRecordBatchReader\
+        " arrow::flight::MakeRecordBatchReader"(
+            shared_ptr[CMetadataRecordBatchReader])
+
     cdef cppclass CMetadataRecordBatchWriter \
             " arrow::flight::MetadataRecordBatchWriter"(CRecordBatchWriter):
         CStatus Begin(shared_ptr[CSchema] schema,
@@ -289,7 +293,6 @@ cdef extern from "arrow/flight/api.h" namespace "arrow" nogil:
         vector[pair[c_string, shared_ptr[CServerMiddlewareFactory]]] middleware
 
     cdef cppclass CFlightClientOptions" arrow::flight::FlightClientOptions":
-        CFlightClientOptions()
         c_string tls_root_certs
         c_string cert_chain
         c_string private_key
@@ -298,6 +301,9 @@ cdef extern from "arrow/flight/api.h" namespace "arrow" nogil:
         int64_t write_size_limit_bytes
         vector[pair[c_string, CIntStringVariant]] generic_options
         c_bool disable_server_verification
+
+        @staticmethod
+        CFlightClientOptions Defaults()
 
     cdef cppclass CFlightClient" arrow::flight::FlightClient":
         @staticmethod

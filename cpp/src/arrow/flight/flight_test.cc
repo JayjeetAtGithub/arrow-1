@@ -51,10 +51,10 @@
 #include "arrow/flight/middleware_internal.h"
 #include "arrow/flight/test_util.h"
 
-namespace pb = arrow::flight::protocol;
-
 namespace arrow {
 namespace flight {
+
+namespace pb = arrow::flight::protocol;
 
 const char kValidUsername[] = "flight_username";
 const char kValidPassword[] = "flight_password";
@@ -427,12 +427,20 @@ class TestFlightClient : public ::testing::Test {
     std::unique_ptr<FlightStreamReader> stream;
     ASSERT_OK(client_->DoGet(ticket, &stream));
 
+    std::unique_ptr<FlightStreamReader> stream2;
+    ASSERT_OK(client_->DoGet(ticket, &stream2));
+    ASSERT_OK_AND_ASSIGN(auto reader, MakeRecordBatchReader(std::move(stream2)));
+
     FlightStreamChunk chunk;
+    std::shared_ptr<RecordBatch> batch;
     for (int i = 0; i < num_batches; ++i) {
       ASSERT_OK(stream->Next(&chunk));
+      ASSERT_OK(reader->ReadNext(&batch));
       ASSERT_NE(nullptr, chunk.data);
+      ASSERT_NE(nullptr, batch);
 #if !defined(__MINGW32__)
       ASSERT_BATCHES_EQUAL(*expected_batches[i], *chunk.data);
+      ASSERT_BATCHES_EQUAL(*expected_batches[i], *batch);
 #else
       // In MINGW32, the following code does not have the reproducibility at the LSB
       // even when this is called twice with the same seed.
@@ -444,12 +452,15 @@ class TestFlightClient : public ::testing::Test {
       //                 [&dist, &rng] { return static_cast<ValueType>(dist(rng)); });
       //   /* data[1] = 0x40852cdfe23d3976 or 0x40852cdfe23d3975 */
       ASSERT_BATCHES_APPROX_EQUAL(*expected_batches[i], *chunk.data);
+      ASSERT_BATCHES_APPROX_EQUAL(*expected_batches[i], *batch);
 #endif
     }
 
     // Stream exhausted
     ASSERT_OK(stream->Next(&chunk));
+    ASSERT_OK(reader->ReadNext(&batch));
     ASSERT_EQ(nullptr, chunk.data);
+    ASSERT_EQ(nullptr, batch);
   }
 
  protected:
@@ -740,7 +751,7 @@ class TestTls : public ::testing::Test {
   }
 
   Status ConnectClient() {
-    auto options = FlightClientOptions();
+    auto options = FlightClientOptions::Defaults();
     CertKeyPair root_cert;
     RETURN_NOT_OK(ExampleTlsCertificateRoot(&root_cert));
     options.tls_root_certs = root_cert.pem_cert;
@@ -1891,7 +1902,7 @@ TEST_F(TestDoPut, DoPutSizeLimit) {
   const int64_t size_limit = 4096;
   Location location;
   ASSERT_OK(Location::ForGrpcTcp("localhost", server_->port(), &location));
-  FlightClientOptions client_options;
+  auto client_options = FlightClientOptions::Defaults();
   client_options.write_size_limit_bytes = size_limit;
   std::unique_ptr<FlightClient> client;
   ASSERT_OK(FlightClient::Connect(location, client_options, &client));
@@ -2155,7 +2166,7 @@ TEST_F(TestTls, DoAction) {
 #if defined(GRPC_NAMESPACE_FOR_TLS_CREDENTIALS_OPTIONS)
 TEST_F(TestTls, DisableServerVerification) {
   std::unique_ptr<FlightClient> client;
-  auto client_options = FlightClientOptions();
+  auto client_options = FlightClientOptions::Defaults();
   // For security reasons, if encryption is being used,
   // the client should be configured to verify the server by default.
   ASSERT_EQ(client_options.disable_server_verification, false);
@@ -2180,7 +2191,7 @@ TEST_F(TestTls, DisableServerVerification) {
 
 TEST_F(TestTls, OverrideHostname) {
   std::unique_ptr<FlightClient> client;
-  auto client_options = FlightClientOptions();
+  auto client_options = FlightClientOptions::Defaults();
   client_options.override_hostname = "fakehostname";
   CertKeyPair root_cert;
   ASSERT_OK(ExampleTlsCertificateRoot(&root_cert));
@@ -2199,7 +2210,7 @@ TEST_F(TestTls, OverrideHostname) {
 // Test the facility for setting generic transport options.
 TEST_F(TestTls, OverrideHostnameGeneric) {
   std::unique_ptr<FlightClient> client;
-  auto client_options = FlightClientOptions();
+  auto client_options = FlightClientOptions::Defaults();
   client_options.generic_options.emplace_back(GRPC_SSL_TARGET_NAME_OVERRIDE_ARG,
                                               "fakehostname");
   CertKeyPair root_cert;

@@ -35,12 +35,14 @@ public class JniWrapper {
   }
 
   /**
-   * Creates dataset factory for reading file
+   * Create FileSystemDatasetFactory and return its native pointer. The pointer is pointing to a
+   * intermediate shared_ptr of the factory instance.
    * @param path full path of the file
-   * @param fileFormat format ID
+   * @param fileFormat file format ID
    * @param startOffset random read position. -1 for reading from start.
    * @param length reading length. -1 for reading all bytes of the file.
-   * @return
+   * @return the native pointer of the arrow::dataset::FileSystemDatasetFactory instance.
+   * @see FileFormat
    */
   public native long makeSingleFileDatasetFactory(String path, int fileFormat,
       long startOffset, long length);

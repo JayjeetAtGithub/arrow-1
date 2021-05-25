@@ -20,7 +20,7 @@ package org.apache.arrow.memory;
 import org.apache.arrow.dataset.jni.JniWrapper;
 
 /**
- * AllocationManager implementation for Native allocated memory.
+ * AllocationManager implementation for native allocated memory.
  */
 public class NativeUnderlyingMemory extends AllocationManager {
 
@@ -32,36 +32,36 @@ public class NativeUnderlyingMemory extends AllocationManager {
    * Constructor.
    *
    * @param accountingAllocator The accounting allocator instance
-   * @param size Size of underling memory (in bytes)
+   * @param size Size of underlying memory (in bytes)
    * @param nativeInstanceId ID of the native instance
    */
-  public NativeUnderlyingMemory(BufferAllocator accountingAllocator, int size, long nativeInstanceId, long address) {
+  NativeUnderlyingMemory(BufferAllocator accountingAllocator, int size, long nativeInstanceId, long address) {
     super(accountingAllocator);
     this.size = size;
     this.nativeInstanceId = nativeInstanceId;
     this.address = address;
     // pre-allocate bytes on accounting allocator
+    final AllocationListener listener = accountingAllocator.getListener();
     try (final AllocationReservation reservation = accountingAllocator.newReservation()) {
+      listener.onPreAllocation(size);
       reservation.reserve(size);
+      listener.onAllocation(size);
     } catch (Exception e) {
       release0();
       throw e;
     }
   }
 
-  @Override
-  public BufferLedger associate(BufferAllocator allocator) {
-    return super.associate(allocator);
+  /**
+   * Alias to constructor.
+   */
+  public static NativeUnderlyingMemory create(BufferAllocator bufferAllocator, int size, long nativeInstanceId,
+      long address) {
+    return new NativeUnderlyingMemory(bufferAllocator, size, nativeInstanceId, address);
   }
 
-
-  @Override
-  protected void releaseFromAllocator(BufferAllocator allocator) {
-    // Comparing to BaseAllocator#release, we are not calling listener#onRelease at here
-    // since we never retained bytes from the listener.
-    long size = getSize();
-    allocator.releaseBytes(size);
-    release0();
+  public BufferLedger associate(BufferAllocator allocator) {
+    return super.associate(allocator);
   }
 
   @Override

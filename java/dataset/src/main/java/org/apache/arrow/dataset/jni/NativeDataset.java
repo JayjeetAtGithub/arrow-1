@@ -17,18 +17,18 @@
 
 package org.apache.arrow.dataset.jni;
 
-import org.apache.arrow.dataset.fragment.DataFragment;
 import org.apache.arrow.dataset.scanner.ScanOptions;
 import org.apache.arrow.dataset.source.Dataset;
-import org.apache.arrow.memory.NativeContext;
 
 /**
  * Native implementation of {@link Dataset}.
  */
-public class NativeDataset implements Dataset, AutoCloseable {
+public class NativeDataset implements Dataset {
 
   private final NativeContext context;
   private final long datasetId;
+
+  private boolean closed = false;
 
   public NativeDataset(NativeContext context, long datasetId) {
     this.context = context;
@@ -36,24 +36,21 @@ public class NativeDataset implements Dataset, AutoCloseable {
   }
 
   @Override
-  public Iterable<? extends DataFragment> getFragments(ScanOptions options) {
-    throw new UnsupportedOperationException("Use of getFragments() on NativeDataset is currently forbidden. " +
-        "Try creating scanners instead");
-  }
-
-  @Override
-  public NativeScanner newScan(ScanOptions options) {
+  public synchronized NativeScanner newScan(ScanOptions options) {
+    if (closed) {
+      throw new NativeInstanceReleasedException();
+    }
     long scannerId = JniWrapper.get().createScanner(datasetId, options.getColumns(),
-        options.getFilter().toByteArray(), options.getBatchSize(), context.getMemoryPool().getNativeInstanceId());
+    options.getFilter().toByteArray(), options.getBatchSize(), context.getMemoryPool().getNativeInstanceId());
     return new NativeScanner(context, scannerId);
   }
 
-  public long getDatasetId() {
-    return datasetId;
-  }
-
   @Override
-  public void close() {
+  public synchronized void close() {
+    if (closed) {
+      return;
+    }
+    closed = true;
     JniWrapper.get().closeDataset(datasetId);
   }
 }

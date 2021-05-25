@@ -18,7 +18,6 @@
 #
 # arrow_jni
 #
-
 if(ARROW_ORC)
   add_subdirectory(orc)
 endif()

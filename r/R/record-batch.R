@@ -57,6 +57,11 @@
 #'    integers (R vector or Array Array) `i`.
 #' - `$Filter(i, keep_na = TRUE)`: return an `RecordBatch` with rows at positions where logical
 #'    vector (or Arrow boolean Array) `i` is `TRUE`.
+#' - `$SortIndices(names, descending = FALSE)`: return an `Array` of integer row
+#'    positions that can be used to rearrange the `RecordBatch` in ascending or
+#'    descending order by the first named column, breaking ties with further named
+#'    columns. `descending` can be a logical vector of length one or of the same
+#'    length as `names`.
 #' - `$serialize()`: Returns a raw vector suitable for interprocess communication
 #' - `$cast(target_schema, safe = TRUE, options = cast_options(safe))`: Alter
 #'    the schema of the record batch.
@@ -71,6 +76,7 @@
 #' - `$columns`: Returns a list of `Array`s
 #' @rdname RecordBatch
 #' @name RecordBatch
+#' @export
 RecordBatch <- R6Class("RecordBatch", inherit = ArrowTabular,
   public = list(
     column = function(i) RecordBatch__column(self, i),
@@ -99,7 +105,7 @@ RecordBatch <- R6Class("RecordBatch", inherit = ArrowTabular,
         RecordBatch__Slice2(self, offset, length)
       }
     },
-    # Take and Filter are methods on ArrowTabular
+    # Take, Filter, and SortIndices are methods on ArrowTabular
     serialize = function() ipc___SerializeRecordBatch__Raw(self),
     to_data_frame = function() {
       RecordBatch__to_dataframe(self, use_threads = option_use_threads())
@@ -142,13 +148,20 @@ RecordBatch$create <- function(..., schema = NULL) {
   if (length(arrays) == 1 && inherits(arrays[[1]], c("raw", "Buffer", "InputStream", "Message"))) {
     return(RecordBatch$from_message(arrays[[1]], schema))
   }
-  # Else, list of arrays
+  
+  # Else, a list of arrays or data.frames
   # making sure there are always names
   if (is.null(names(arrays))) {
     names(arrays) <- rep_len("", length(arrays))
   }
   stopifnot(length(arrays) > 0)
 
+  # Preserve any grouping
+  if (length(arrays) == 1 && inherits(arrays[[1]], "grouped_df")) {
+    out <- RecordBatch__from_arrays(schema, arrays)
+    return(dplyr::group_by(out, !!!dplyr::groups(arrays[[1]])))
+  }
+  
   # TODO: should this also assert that they're all Arrays?
   RecordBatch__from_arrays(schema, arrays)
 }

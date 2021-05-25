@@ -20,12 +20,22 @@ package org.apache.arrow.dataset.scanner;
 import org.apache.arrow.vector.types.pojo.Schema;
 
 /**
- * A high level interface for scanning data over datasets.
+ * A high level interface for scanning data over dataset.
  */
-public interface Scanner {
+public interface Scanner extends AutoCloseable {
 
+  /**
+   * Perform the scan operation.
+   *
+   * @return a iterable set of {@link ScanTask}s. Each task is considered independent and it is allowed
+   *     to execute the tasks concurrently to gain better performance.
+   */
   Iterable<? extends ScanTask> scan();
 
+  /**
+   * Get the schema of this Scanner.
+   *
+   * @return the schema instance
+   */
   Schema schema();
-
 }

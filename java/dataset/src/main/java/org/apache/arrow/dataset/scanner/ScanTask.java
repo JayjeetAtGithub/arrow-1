@@ -18,40 +18,25 @@
 package org.apache.arrow.dataset.scanner;
 
 import java.util.Iterator;
-import java.util.Map;
 
-import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.dictionary.Dictionary;
+import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 
 /**
  * Read record batches from a range of a single data fragment. A
  * ScanTask is meant to be a unit of work to be dispatched. The implementation
  * must be thread and concurrent safe.
  */
-public interface ScanTask {
+public interface ScanTask extends AutoCloseable {
 
   /**
-   * Creates and returns a {@link Itr} instance.
+   * Creates and returns a {@link BatchIterator} instance.
    */
-  Itr scan();
+  BatchIterator execute();
 
   /**
-   * The iterator implementation for {@link VectorSchemaRoot}s.
+   * The iterator implementation for {@link org.apache.arrow.vector.ipc.message.ArrowRecordBatch}s.
    */
-  interface Itr extends Iterator<ArrowBundledVectors>, AutoCloseable {
-    // FIXME VectorSchemaRoot is not actually something ITERABLE. Using a reader convention instead.
-  }
+  interface BatchIterator extends Iterator<ArrowRecordBatch>, AutoCloseable {
 
-  /**
-   * Emitted vectors including both values and dictionaries.
-   */
-  class ArrowBundledVectors {
-    public final VectorSchemaRoot valueVectors;
-    public final Map<Long, Dictionary> dictionaryVectors;
-
-    public ArrowBundledVectors(VectorSchemaRoot valueVectors, Map<Long, Dictionary> dictionaryVectors) {
-      this.valueVectors = valueVectors;
-      this.dictionaryVectors = dictionaryVectors;
-    }
   }
 }

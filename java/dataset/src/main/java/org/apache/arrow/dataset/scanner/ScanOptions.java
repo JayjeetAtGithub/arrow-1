@@ -17,8 +17,6 @@
 
 package org.apache.arrow.dataset.scanner;
 
-import org.apache.arrow.dataset.filter.Filter;
-
 /**
  * Options used during scanning.
  */
@@ -29,7 +27,7 @@ public class ScanOptions {
 
   /**
    * Constructor.
-   * @param columns Projected columns
+   * @param columns Projected columns. Empty for scanning all columns.
    * @param filter Filter
    * @param batchSize Maximum row number of each returned {@link org.apache.arrow.vector.VectorSchemaRoot}
    */

@@ -61,21 +61,17 @@ const gCCLanguageNames = {
  es2015: `ECMASCRIPT_2015`,
  es2016: `ECMASCRIPT_2016`,
  es2017: `ECMASCRIPT_2017`,
+ es2018: `ECMASCRIPT_2018`,
+ es2019: `ECMASCRIPT_2019`,
  esnext: `ECMASCRIPT_NEXT`
 };
 
 const UMDSourceTargets = {
     es5: `es5`,
  es2015: `es2015`,
- es2016: `es2015`,
- es2017: `es2015`,
+ es2016: `es2016`,
+ es2017: `es2017`,
  esnext: `esnext`
-};
-
-const terserLanguageNames = {
-    es5: 5, es2015: 6,
- es2016: 7, es2017: 8,
- esnext: 8 // <--- ?
 };
 
 // ES7+ keywords Terser shouldn't mangle
@@ -211,7 +207,7 @@ module.exports = {
     mainExport, npmPkgName, npmOrgName, metadataFiles, packageJSONFields,
 
     knownTargets, knownModules, tasksToSkipPerTargetOrFormat,
-    gCCLanguageNames, UMDSourceTargets, terserLanguageNames,
+    gCCLanguageNames, UMDSourceTargets,
 
     taskName, packageName, tsconfigName, targetDir, combinations, observableFromStreams,
     ESKeywords, publicModulePaths, esmRequire, shouldRunInChildProcess, spawnGulpCommandInChildProcess

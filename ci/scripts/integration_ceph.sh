@@ -19,6 +19,9 @@
 
 set -ex
 
+apt update
+apt install -y ceph-fuse
+
 source_dir=${1}/cpp
 build_dir=${2}/cpp
 test_dir=${build_dir}/test-cluster

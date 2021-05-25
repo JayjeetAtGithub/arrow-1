@@ -67,7 +67,6 @@ RUN apt-get update -y -q && \
         git \
         libbenchmark-dev \
         libboost-filesystem-dev \
-        libboost-regex-dev \
         libboost-system-dev \
         libbrotli-dev \
         libbz2-dev \

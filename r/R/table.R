@@ -65,6 +65,11 @@
 #'    coerced to an R vector before taking.
 #' - `$Filter(i, keep_na = TRUE)`: return an `Table` with rows at positions where logical
 #'    vector or Arrow boolean-type `(Chunked)Array` `i` is `TRUE`.
+#' - `$SortIndices(names, descending = FALSE)`: return an `Array` of integer row
+#'    positions that can be used to rearrange the `Table` in ascending or descending
+#'    order by the first named column, breaking ties with further named columns.
+#'    `descending` can be a logical vector of length one or of the same length as
+#'    `names`.
 #' - `$serialize(output_stream, ...)`: Write the table to the given
 #'    [OutputStream]
 #' - `$cast(target_schema, safe = TRUE, options = cast_options(safe))`: Alter
@@ -122,7 +127,7 @@ Table <- R6Class("Table", inherit = ArrowTabular,
         Table__Slice2(self, offset, length)
       }
     },
-    # Take and Filter are methods on ArrowTabular
+    # Take, Filter, and SortIndices are methods on ArrowTabular
     Equals = function(other, check_metadata = FALSE, ...) {
       inherits(other, "Table") && Table__Equals(self, other, isTRUE(check_metadata))
     },
@@ -163,6 +168,13 @@ Table$create <- function(..., schema = NULL) {
     names(dots) <- rep_len("", length(dots))
   }
   stopifnot(length(dots) > 0)
+  
+  # Preserve any grouping
+  if (length(dots) == 1 && inherits(dots[[1]], "grouped_df")) {
+    out <- Table__from_dots(dots, schema)
+    return(dplyr::group_by(out, !!!dplyr::groups(dots[[1]])))
+  }
+  
   if (all_record_batches(dots)) {
     Table__from_record_batches(dots, schema)
   } else {

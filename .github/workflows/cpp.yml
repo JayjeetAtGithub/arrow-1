@@ -38,10 +38,8 @@ on:
       - 'format/Flight.proto'
 
 env:
-  DOCKER_BUILDKIT: 0
-  DOCKER_VOLUME_PREFIX: ".docker/"
-  COMPOSE_DOCKER_CLI_BUILD: 1
   ARROW_ENABLE_TIMING_TESTS: OFF
+  DOCKER_VOLUME_PREFIX: ".docker/"
   ARCHERY_DOCKER_USER: ${{ secrets.DOCKERHUB_USER }}
   ARCHERY_DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -51,6 +49,7 @@ jobs:
     name: ${{ matrix.title }}
     runs-on: ubuntu-latest
     if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +62,7 @@ jobs:
           - image: conda-cpp
             title: AMD64 Conda C++
           - image: ubuntu-cpp-sanitizer
-            title: AMD64 Ubuntu 18.04 C++ ASAN UBSAN
+            title: AMD64 Ubuntu 20.04 C++ ASAN UBSAN
           - image: ubuntu-cpp-cls
             ubuntu: 20.04
             title: AMD64 Ubuntu 20.04 C++ (Rados Parquet Format)
@@ -82,7 +81,7 @@ jobs:
       - name: Free Up Disk Space
         run: ci/scripts/util_cleanup.sh
       - name: Cache Docker Volumes
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: .docker
           key: ${{ matrix.image }}-${{ hashFiles('cpp/**') }}
@@ -181,6 +180,7 @@ jobs:
     name: C++ Minimal Build Example
     runs-on: ubuntu-latest
     if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
     steps:
@@ -197,6 +197,7 @@ jobs:
     name: AMD64 MacOS 10.15 C++
     runs-on: macos-latest
     if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
     env:
@@ -231,7 +232,6 @@ jobs:
         run: |
           rm -f /usr/local/bin/2to3
           brew update --preinstall
-          brew unlink gcc@8 gcc@9
           brew bundle --file=cpp/Brewfile
       - name: Build
         shell: bash
@@ -248,6 +248,7 @@ jobs:
     name: AMD64 ${{ matrix.name }} C++
     runs-on: ${{ matrix.os }}
     if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -317,6 +318,7 @@ jobs:
     name: AMD64 Windows MinGW ${{ matrix.mingw-n-bits }} C++
     runs-on: windows-latest
     if: ${{ !contains(github.event.pull_request.title, 'WIP') }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -377,7 +379,7 @@ jobs:
         run: |
           ci/scripts/msys2_setup.sh cpp
       - name: Cache ccache
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ccache
           key: cpp-ccache-mingw${{ matrix.mingw-n-bits }}-${{ hashFiles('cpp/**') }}

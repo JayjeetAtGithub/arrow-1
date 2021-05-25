@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cstdint>
+
 #include "gandiva/gdv_function_stubs.h"
 
 // Use the same names as in arrow data types. Makes it easy to write pre-processor macros.
@@ -163,6 +164,57 @@ gdv_float64 log10_int64(gdv_int64);
 gdv_float64 log10_float32(gdv_float32);
 gdv_float64 log10_float64(gdv_float64);
 
+gdv_float64 sin_int32(gdv_int32);
+gdv_float64 sin_int64(gdv_int64);
+gdv_float64 sin_float32(gdv_float32);
+gdv_float64 sin_float64(gdv_float64);
+gdv_float64 cos_int32(gdv_int32);
+gdv_float64 cos_int64(gdv_int64);
+gdv_float64 cos_float32(gdv_float32);
+gdv_float64 cos_float64(gdv_float64);
+gdv_float64 asin_int32(gdv_int32);
+gdv_float64 asin_int64(gdv_int64);
+gdv_float64 asin_float32(gdv_float32);
+gdv_float64 asin_float64(gdv_float64);
+gdv_float64 acos_int32(gdv_int32);
+gdv_float64 acos_int64(gdv_int64);
+gdv_float64 acos_float32(gdv_float32);
+gdv_float64 acos_float64(gdv_float64);
+gdv_float64 tan_int32(gdv_int32);
+gdv_float64 tan_int64(gdv_int64);
+gdv_float64 tan_float32(gdv_float32);
+gdv_float64 tan_float64(gdv_float64);
+gdv_float64 atan_int32(gdv_int32);
+gdv_float64 atan_int64(gdv_int64);
+gdv_float64 atan_float32(gdv_float32);
+gdv_float64 atan_float64(gdv_float64);
+gdv_float64 sinh_int32(gdv_int32);
+gdv_float64 sinh_int64(gdv_int64);
+gdv_float64 sinh_float32(gdv_float32);
+gdv_float64 sinh_float64(gdv_float64);
+gdv_float64 cosh_int32(gdv_int32);
+gdv_float64 cosh_int64(gdv_int64);
+gdv_float64 cosh_float32(gdv_float32);
+gdv_float64 cosh_float64(gdv_float64);
+gdv_float64 tanh_int32(gdv_int32);
+gdv_float64 tanh_int64(gdv_int64);
+gdv_float64 tanh_float32(gdv_float32);
+gdv_float64 tanh_float64(gdv_float64);
+gdv_float64 atan2_int32_int32(gdv_int32 in1, gdv_int32 in2);
+gdv_float64 atan2_int64_int64(gdv_int64 in1, gdv_int64 in2);
+gdv_float64 atan2_float32_float32(gdv_float32 in1, gdv_float32 in2);
+gdv_float64 atan2_float64_float64(gdv_float64 in1, gdv_float64 in2);
+gdv_float64 cot_float32(gdv_float32);
+gdv_float64 cot_float64(gdv_float64);
+gdv_float64 radians_int32(gdv_int32);
+gdv_float64 radians_int64(gdv_int64);
+gdv_float64 radians_float32(gdv_float32);
+gdv_float64 radians_float64(gdv_float64);
+gdv_float64 degrees_int32(gdv_int32);
+gdv_float64 degrees_int64(gdv_int64);
+gdv_float64 degrees_float32(gdv_float32);
+gdv_float64 degrees_float64(gdv_float64);
+
 gdv_int32 bitwise_and_int32_int32(gdv_int32 in1, gdv_int32 in2);
 gdv_int64 bitwise_and_int64_int64(gdv_int64 in1, gdv_int64 in2);
 gdv_int32 bitwise_or_int32_int32(gdv_int32 in1, gdv_int32 in2);
@@ -200,7 +252,9 @@ gdv_timestamp castTIMESTAMP_utf8(int64_t execution_context, const char* input,
 gdv_timestamp castTIMESTAMP_date64(gdv_date64);
 gdv_timestamp castTIMESTAMP_int64(gdv_int64);
 gdv_date64 castDATE_timestamp(gdv_timestamp);
+gdv_time32 castTIME_timestamp(gdv_timestamp timestamp_in_millis);
 const char* castVARCHAR_timestamp_int64(int64_t, gdv_timestamp, gdv_int64, gdv_int32*);
+gdv_date64 last_day_from_timestamp(gdv_date64 millis);
 
 gdv_int64 truncate_int64_int32(gdv_int64 in, gdv_int32 out_scale);
 
@@ -316,6 +370,10 @@ const char* concatOperator_utf8_utf8_utf8_utf8_utf8_utf8_utf8_utf8_utf8_utf8(
     gdv_int32 in8_len, const char* in9, gdv_int32 in9_len, const char* in10,
     gdv_int32 in10_len, gdv_int32* out_len);
 
+const char* castVARCHAR_binary_int64(gdv_int64 context, const char* data,
+                                     gdv_int32 data_len, int64_t out_len,
+                                     int32_t* out_length);
+
 const char* castVARCHAR_utf8_int64(gdv_int64 context, const char* data,
                                    gdv_int32 data_len, int64_t out_len,
                                    int32_t* out_length);
@@ -365,9 +423,52 @@ const char* replace_utf8_utf8_utf8(gdv_int64 context, const char* text,
                                    gdv_int32 from_str_len, const char* to_str,
                                    gdv_int32 to_str_len, gdv_int32* out_len);
 
+const char* convert_replace_invalid_fromUTF8_binary(int64_t context, const char* text_in,
+                                                    int32_t text_len,
+                                                    const char* char_to_replace,
+                                                    int32_t char_to_replace_len,
+                                                    int32_t* out_len);
+
+const char* convert_toDOUBLE(int64_t context, double value, int32_t* out_len);
+
+const char* convert_toDOUBLE_be(int64_t context, double value, int32_t* out_len);
+
+const char* convert_toFLOAT(int64_t context, float value, int32_t* out_len);
+
+const char* convert_toFLOAT_be(int64_t context, float value, int32_t* out_len);
+
+const char* convert_toBIGINT(int64_t context, int64_t value, int32_t* out_len);
+
+const char* convert_toBIGINT_be(int64_t context, int64_t value, int32_t* out_len);
+
+const char* convert_toINT(int64_t context, int32_t value, int32_t* out_len);
+
+const char* convert_toINT_be(int64_t context, int32_t value, int32_t* out_len);
+
+const char* convert_toBOOLEAN(int64_t context, bool value, int32_t* out_len);
+
+const char* convert_toTIME_EPOCH(int64_t context, int32_t value, int32_t* out_len);
+
+const char* convert_toTIME_EPOCH_be(int64_t context, int32_t value, int32_t* out_len);
+
+const char* convert_toTIMESTAMP_EPOCH(int64_t context, int64_t timestamp,
+                                      int32_t* out_len);
+const char* convert_toTIMESTAMP_EPOCH_be(int64_t context, int64_t timestamp,
+                                         int32_t* out_len);
+
+const char* convert_toDATE_EPOCH(int64_t context, int64_t date, int32_t* out_len);
+
+const char* convert_toDATE_EPOCH_be(int64_t context, int64_t date, int32_t* out_len);
+
+const char* convert_toUTF8(int64_t context, const char* value, int32_t value_len,
+                           int32_t* out_len);
+
 const char* split_part(gdv_int64 context, const char* text, gdv_int32 text_len,
                        const char* splitter, gdv_int32 split_len, gdv_int32 index,
                        gdv_int32* out_len);
+
+const char* castVARCHAR_bool_int64(gdv_int64 context, gdv_boolean value,
+                                   gdv_int64 out_len, gdv_int32* out_length);
 
 const char* castVARCHAR_int32_int64(int64_t context, int32_t value, int64_t len,
                                     int32_t* out_len);

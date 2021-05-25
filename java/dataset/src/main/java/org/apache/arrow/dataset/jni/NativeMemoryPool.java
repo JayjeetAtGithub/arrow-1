@@ -17,11 +17,8 @@
 
 package org.apache.arrow.dataset.jni;
 
-
-import org.apache.arrow.memory.ReservationListener;
-
 /**
- * Native memory pool's Java mapped instance.
+ * C++ memory pool(arrow::MemoryPool)'s Java mapped instance.
  */
 public class NativeMemoryPool implements AutoCloseable {
   private final long nativeInstanceId;
@@ -34,20 +31,34 @@ public class NativeMemoryPool implements AutoCloseable {
     this.nativeInstanceId = nativeInstanceId;
   }
 
+  /**
+   * Get the default memory pool. This will return arrow::default_memory_pool() directly.
+   */
   public static NativeMemoryPool getDefault() {
     return new NativeMemoryPool(getDefaultMemoryPool());
   }
 
+  /**
+   * Create a listenable memory pool (see also: arrow::ReservationListenableMemoryPool) with
+   * a specific listener. All buffers created from the memory pool should take enough reservation
+   * from the listener in advance.
+   */
   public static NativeMemoryPool createListenable(ReservationListener listener) {
     return new NativeMemoryPool(createListenableMemoryPool(listener));
   }
 
-  public long getBytesAllocated() {
-    return bytesAllocated(nativeInstanceId);
-  }
-
+  /**
+   * Return native instance ID of this memory pool.
+   */
   public long getNativeInstanceId() {
     return nativeInstanceId;
+  }
+
+  /**
+   * Get current allocated bytes.
+   */
+  public long getBytesAllocated() {
+    return bytesAllocated(nativeInstanceId);
   }
 
   @Override
