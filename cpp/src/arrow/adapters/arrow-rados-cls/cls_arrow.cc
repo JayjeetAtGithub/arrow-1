@@ -138,10 +138,8 @@ static arrow::Status ScanParquetObject(cls_method_context_t hctx,
   arrow::dataset::FileSource source(file);
 
   auto format = std::make_shared<arrow::dataset::ParquetFileFormat>();
-
-  auto fragment_scan_options =
-      std::make_shared<arrow::dataset::ParquetFragmentScanOptions>();
-  fragment_scan_options->enable_parallel_column_conversion = true;
+  arrow::dataset::ParquetFileFormat::ReaderOptions reader_options{};
+  format->reader_options = reader_options;
 
   ARROW_ASSIGN_OR_RAISE(auto fragment,
                         format->MakeFragment(source, partition_expression));
