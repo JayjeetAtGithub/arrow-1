@@ -22,7 +22,7 @@
 #include "arrow/compute/exec/expression.h"
 #include "arrow/dataset/dataset.h"
 #include "arrow/dataset/file_parquet.h"
-#include "arrow/dataset/rados_utils.h"
+#include "arrow/dataset/file_rados_parquet.h"
 #include "arrow/io/api.h"
 #include "arrow/ipc/api.h"
 #include "parquet/api/reader.h"
@@ -138,8 +138,9 @@ static arrow::Status ScanParquetObject(cls_method_context_t hctx,
   arrow::dataset::FileSource source(file);
 
   auto format = std::make_shared<arrow::dataset::ParquetFileFormat>();
-  arrow::dataset::ParquetFileFormat::ReaderOptions reader_options{};
-  format->reader_options = reader_options;
+
+  auto fragment_scan_options =
+      std::make_shared<arrow::dataset::ParquetFragmentScanOptions>();
 
   ARROW_ASSIGN_OR_RAISE(auto fragment,
                         format->MakeFragment(source, partition_expression));
@@ -171,9 +172,9 @@ static int scan_op(cls_method_context_t hctx, ceph::bufferlist* in,
   int64_t file_size;
 
   // deserialize the scan request
-  if (!arrow::dataset::DeserializeScanRequestFromBufferlist(
-           &filter, &partition_expression, &projection_schema, &dataset_schema, file_size,
-           *in)
+  if (!arrow::dataset::DeserializeScanRequest(&filter, &partition_expression,
+                                              &projection_schema, &dataset_schema,
+                                              file_size, *in)
            .ok())
     return -1;
 
@@ -189,7 +190,7 @@ static int scan_op(cls_method_context_t hctx, ceph::bufferlist* in,
 
   // serialize the resultant table to send back to the client
   ceph::bufferlist bl;
-  if (!arrow::dataset::SerializeTableToBufferlist(table, bl).ok()) return -1;
+  if (!arrow::dataset::SerializeTable(table, bl).ok()) return -1;
 
   *out = bl;
   return 0;

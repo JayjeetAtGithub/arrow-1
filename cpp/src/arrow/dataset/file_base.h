@@ -160,7 +160,7 @@ class ARROW_DS_EXPORT FileFormat : public std::enable_shared_from_this<FileForma
       const std::shared_ptr<FileFragment>& file) const;
   virtual Future<util::optional<int64_t>> CountRows(
       const std::shared_ptr<FileFragment>& file, compute::Expression predicate,
-      std::shared_ptr<ScanOptions> options);
+      const std::shared_ptr<ScanOptions>& options);
 
   /// \brief Open a fragment
   virtual Result<std::shared_ptr<FileFragment>> MakeFragment(
@@ -173,8 +173,8 @@ class ARROW_DS_EXPORT FileFormat : public std::enable_shared_from_this<FileForma
 
   /// \brief Create a FileFragment for a FileSource.
   Result<std::shared_ptr<FileFragment>> MakeFragment(
-      FileSource source, compute::Expression partition_expression, int flag,
-      std::shared_ptr<Schema> dataset_schema);
+      FileSource source, compute::Expression partition_expression, bool is_dataset_schema,
+      std::shared_ptr<Schema> schema);
 
   Result<std::shared_ptr<FileFragment>> MakeFragment(
       FileSource source, std::shared_ptr<Schema> physical_schema = NULLPTR);
@@ -195,7 +195,8 @@ class ARROW_DS_EXPORT FileFragment : public Fragment {
   Result<RecordBatchGenerator> ScanBatchesAsync(
       const std::shared_ptr<ScanOptions>& options) override;
   Future<util::optional<int64_t>> CountRows(
-      compute::Expression predicate, std::shared_ptr<ScanOptions> options) override;
+      compute::Expression predicate,
+      const std::shared_ptr<ScanOptions>& options) override;
 
   std::string type_name() const override { return format_->type_name(); }
   std::string ToString() const override { return source_.path(); };

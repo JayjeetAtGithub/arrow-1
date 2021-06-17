@@ -86,7 +86,7 @@ Result<std::shared_ptr<io::InputStream>> FileSource::OpenCompressed(
 
 Future<util::optional<int64_t>> FileFormat::CountRows(
     const std::shared_ptr<FileFragment>&, compute::Expression,
-    std::shared_ptr<ScanOptions>) {
+    const std::shared_ptr<ScanOptions>&) {
   return Future<util::optional<int64_t>>::MakeFinished(util::nullopt);
 }
 
@@ -97,16 +97,14 @@ Result<std::shared_ptr<FileFragment>> FileFormat::MakeFragment(
 }
 
 Result<std::shared_ptr<FileFragment>> FileFormat::MakeFragment(
-    FileSource source, compute::Expression partition_expression, int flag,
-    std::shared_ptr<Schema> dataset_schema) {
-  if (type_name() == "rados-parquet") {
-    /// don't create a parquet file fragment, just create a FileFragment..
-    return std::shared_ptr<FileFragment>(new FileFragment(
-        std::move(source), shared_from_this(), std::move(partition_expression), nullptr,
-        std::move(dataset_schema)));
+    FileSource source, compute::Expression partition_expression, bool is_dataset_schema,
+    std::shared_ptr<Schema> schema) {
+  if (is_dataset_schema) {
+    return std::shared_ptr<FileFragment>(
+        new FileFragment(std::move(source), shared_from_this(),
+                         std::move(partition_expression), nullptr, std::move(schema)));
   } else {
-    /// whereas here it creates a ParquetFileFragment
-    return MakeFragment(std::move(source), std::move(partition_expression), nullptr);
+    return MakeFragment(std::move(source), std::move(partition_expression), schema);
   }
 }
 
@@ -190,14 +188,14 @@ Result<RecordBatchGenerator> FileFragment::ScanBatchesAsync(
 }
 
 Future<util::optional<int64_t>> FileFragment::CountRows(
-    compute::Expression predicate, std::shared_ptr<ScanOptions> options) {
+    compute::Expression predicate, const std::shared_ptr<ScanOptions>& options) {
   ARROW_ASSIGN_OR_RAISE(predicate, compute::SimplifyWithGuarantee(std::move(predicate),
                                                                   partition_expression_));
   if (!predicate.IsSatisfiable()) {
     return Future<util::optional<int64_t>>::MakeFinished(0);
   }
   auto self = internal::checked_pointer_cast<FileFragment>(shared_from_this());
-  return format()->CountRows(self, std::move(predicate), std::move(options));
+  return format()->CountRows(self, std::move(predicate), options);
 }
 
 struct FileSystemDataset::FragmentSubtrees {
