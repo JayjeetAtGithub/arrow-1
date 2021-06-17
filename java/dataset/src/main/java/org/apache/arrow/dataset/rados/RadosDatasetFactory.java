@@ -25,12 +25,12 @@ import org.apache.arrow.dataset.file.FileFormat;
 /** Java binding of the C++ RadosDatasetFactory. */
 public class RadosDatasetFactory extends NativeDatasetFactory {
 
-  public RadosDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String path) {
+  public RadosDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String cls_name, String path) {
     super(allocator, memoryPool, createNative(format, path_to_config, data_pool, user_name, cluster_name, path));
   }
 
-  private static long createNative(FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String path) {
-    return JniWrapper.get().makeRadosDatasetFactory(path_to_config, data_pool, user_name, cluster_name, "file://" + path, format.id());
+  private static long createNative(FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String cls_name, String path) {
+    return JniWrapper.get().makeRadosDatasetFactory(path_to_config, data_pool, user_name, cluster_name, cls_name, "file://" + path, format.id());
   }
 
 }

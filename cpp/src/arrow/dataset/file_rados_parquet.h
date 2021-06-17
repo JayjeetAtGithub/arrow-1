@@ -38,7 +38,6 @@
 #include "arrow/dataset/file_base.h"
 #include "arrow/dataset/file_parquet.h"
 #include "arrow/dataset/rados.h"
-#include "arrow/dataset/rados_utils.h"
 #include "arrow/dataset/scanner.h"
 #include "arrow/dataset/type_fwd.h"
 #include "arrow/dataset/visibility.h"
@@ -69,6 +68,11 @@ class ARROW_DS_EXPORT RadosCluster {
     std::string user_name;
     std::string cluster_name;
     std::string cls_name;
+
+    RadosConnectionCtx(const std::string& ceph_config_path, const std::string& data_pool,
+                       const std::string& user_name, const std::string& cluster_name, const std::string& cls_name)
+                       : ceph_config_path(ceph_config_path), data_pool(data_pool), user_name(user_name),
+                       cluster_name(cluster_name), cls_name(cls_name) {}
   };
   explicit RadosCluster(RadosConnectionCtx& ctx)
       : ctx(ctx), rados(new RadosWrapper()), ioCtx(new IoCtxWrapper()) {}
@@ -157,8 +161,7 @@ class ARROW_DS_EXPORT DirectObjectAccess {
 /// scan operations to the Ceph OSDs
 class ARROW_DS_EXPORT RadosParquetFileFormat : public ParquetFileFormat {
  public:
-  explicit RadosParquetFileFormat(const std::string&, const std::string&,
-                                  const std::string&, const std::string&);
+  explicit RadosParquetFileFormat(const std::string&, const std::string&, const std::string&, const std::string&, const std::string&);
 
   explicit RadosParquetFileFormat(std::shared_ptr<DirectObjectAccess> doa)
       : doa_(std::move(doa)) {}

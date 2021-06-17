@@ -144,24 +144,6 @@ static parquet::ReaderProperties MakeReaderProperties(
   return properties;
 }
 
-//TODO: Sebastiaan: Might need this for bridge
-//void SetDictionaryColumns(std::unique_ptr<parquet::ParquetFileReader> &reader,
-//                          parquet::ArrowReaderProperties &properties,
-//                          const std::unordered_set<std::string> &dict_columns) {
-//  if (dict_columns.empty()) {
-//    // default: dict-encode all columns
-//    int num_columns = reader->metadata()->num_columns();
-//    for (int i = 0; i < num_columns; i++) {
-//      properties.set_read_dictionary(i, true);
-//    }
-//    return;
-//  }
-//  for (const std::string &name : dict_columns) {
-//    auto column_index = reader->metadata()->schema()->ColumnIndex(name);
-//    properties.set_read_dictionary(column_index, true);
-//  }
-//}
-
 static parquet::ArrowReaderProperties MakeArrowReaderProperties(
     const ParquetFileFormat& format, const parquet::FileMetaData& metadata) {
   parquet::ArrowReaderProperties properties(/* use_threads = */ false);
@@ -335,10 +317,6 @@ Result<std::unique_ptr<parquet::arrow::FileReader>> ParquetFileFormat::GetReader
 
   std::shared_ptr<parquet::FileMetaData> metadata = reader->metadata();
   auto arrow_properties = MakeArrowReaderProperties(*this, *metadata);
-
-  //TODO: Sebastiaan: Might need this for bridge
-//  std::unordered_set<std::string> dict_columns = reader_options.dict_columns;
-//  SetDictionaryColumns(reader, arrow_properties, dict_columns);
 
   if (options) {
     arrow_properties.set_batch_size(options->batch_size);

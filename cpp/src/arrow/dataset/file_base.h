@@ -200,7 +200,6 @@ class ARROW_DS_EXPORT FileFragment : public Fragment {
 
   std::string type_name() const override { return format_->type_name(); }
   std::string ToString() const override { return source_.path(); };
-//  bool splittable() const override { return format_->splittable(); } // TODO Sebastiaan: Need splittable properties?
 
   const FileSource& source() const { return source_; }
   const std::shared_ptr<FileFormat>& format() const { return format_; }

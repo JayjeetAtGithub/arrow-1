@@ -83,7 +83,7 @@ add_arrow_lib(arrow_dataset_jni
               arrow_dataset_java
               arrow_dataset_jni_proto)
 
-arrow_install_all_headers("jni/dataset") # TODO Sebastiaan: Is this needed?
+arrow_install_all_headers("jni/dataset")
 
 add_dependencies(arrow_dataset_jni ${ARROW_DATASET_JNI_LIBRARIES})
 

@@ -44,6 +44,6 @@ public class JniWrapper {
    * @param fileFormat format ID
    * @return identifier for native datasetfactory
    */
-  public native long makeRadosDatasetFactory(String path_to_config, String data_pool, String user_name, String cluster_name, String path, int fileFormat);
+  public native long makeRadosDatasetFactory(String path_to_config, String data_pool, String user_name, String cluster_name, String cls_name, String path, int fileFormat);
 
 }

@@ -98,7 +98,6 @@ arrow::Result<std::shared_ptr<arrow::dataset::FileFormat>> GetFileFormat(jint id
     }
 }
 
-
 class ReserveFromJava : public arrow::dataset::jni::ReservationListener {
  public:
   ReserveFromJava(JavaVM* vm, jobject java_reservation_listener)
@@ -658,12 +657,12 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeFileSystemDatasetFactory(
  */
 
 JNIEXPORT jlong JNICALL
-Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring uri, jint file_format_id) {
+Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring cls_name, jstring uri, jint file_format_id) {
   JNI_METHOD_START
   std::shared_ptr<arrow::dataset::FileFormat> file_format;
   switch(file_format_id) {
     case FORMAT_PARQUET:
-      file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name));
+      file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name));
       break;
     default:
       const std::string err = "RadosDatasetFactory is not capable yet of reading given fileformat: fileformat="+std::to_string(file_format_id);

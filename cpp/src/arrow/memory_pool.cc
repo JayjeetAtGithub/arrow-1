@@ -24,7 +24,6 @@
 #include <iostream>  // IWYU pragma: keep
 #include <limits>
 #include <memory>
-#include <mutex>
 
 #if defined(sun) || defined(__sun)
 #include <stdlib.h>

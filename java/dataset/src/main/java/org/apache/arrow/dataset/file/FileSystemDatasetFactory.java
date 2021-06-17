@@ -35,4 +35,5 @@ public class FileSystemDatasetFactory extends NativeDatasetFactory {
   private static long createNative(FileFormat format, String uri) {
     return JniWrapper.get().makeFileSystemDatasetFactory(uri, format.id());
   }
+
 }
