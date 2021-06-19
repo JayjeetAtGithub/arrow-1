@@ -86,13 +86,16 @@ class ARROW_DS_EXPORT RadosConnection : public Connection {
                        cluster_name(cluster_name), cls_name(cls_name) {}
   };
   explicit RadosConnection(RadosConnectionCtx& ctx)
-      : Connection(), ctx(ctx), rados(new RadosWrapper()), ioCtx(new IoCtxWrapper()) {}
+      : Connection(), ctx(ctx), rados(new RadosWrapper()), ioCtx(new IoCtxWrapper()), connected(false) {}
 
    ~RadosConnection() override { shutdown(); }
 
   /// \brief Connect to the Rados cluster.
   /// \return Status.
-  Status connect() {
+  Status connect() override {
+    if (connected)
+        return Status::OK();
+    connected = true;
     if (rados->init2(ctx.user_name.c_str(), ctx.cluster_name.c_str(), 0))
       return Status::Invalid("librados::init2 returned non-zero exit code.");
 
@@ -118,6 +121,7 @@ class ARROW_DS_EXPORT RadosConnection : public Connection {
   RadosConnectionCtx ctx;
   RadosInterface* rados;
   IoCtxInterface* ioCtx;
+  bool connected;
 };
 }
 /// \brief Interface for translating the name of a file in CephFS to its
@@ -125,8 +129,8 @@ class ARROW_DS_EXPORT RadosConnection : public Connection {
 /// and its underlying object.
 class ARROW_DS_EXPORT DirectObjectAccess {
  public:
-  explicit DirectObjectAccess(const std::shared_ptr<connection::RadosConnection>& cluster)
-      : cluster_(std::move(cluster)) {}
+  explicit DirectObjectAccess(const std::shared_ptr<connection::RadosConnection>& connection)
+      : connection_(std::move(connection)) {}
 
   /// \brief Executes the POSIX stat call on a file.
   /// \param[in] path Path of the file.
@@ -157,7 +161,7 @@ class ARROW_DS_EXPORT DirectObjectAccess {
   Status Exec(uint64_t inode, const std::string& fn, ceph::bufferlist& in,
               ceph::bufferlist& out) {
     std::string oid = ConvertFileInodeToObjectID(inode);
-    if (cluster_->ioCtx->exec(oid.c_str(), cluster_->ctx.cls_name.c_str(), fn.c_str(), in,
+    if (connection_->ioCtx->exec(oid.c_str(), connection_->ctx.cls_name.c_str(), fn.c_str(), in,
                               out)) {
       return Status::ExecutionError("librados::exec returned non-zero exit code.");
     }
@@ -165,7 +169,7 @@ class ARROW_DS_EXPORT DirectObjectAccess {
   }
 
  protected:
-  std::shared_ptr<connection::RadosConnection> cluster_;
+  std::shared_ptr<connection::RadosConnection> connection_;
 };
 
 /// \brief A ParquetFileFormat implementation that offloads the fragment

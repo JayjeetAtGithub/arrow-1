@@ -35,6 +35,7 @@
 #include "org_apache_arrow_dataset_rados_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_NativeMemoryPool.h"
+#include <arrow/util/logging.h>
 
 namespace {
 
@@ -358,7 +359,7 @@ std::shared_ptr<arrow::dataset::connection::RadosConnection> createRadosConnecti
     return std::make_shared<arrow::dataset::connection::RadosConnection>(ctx);
 }
 
-arrow::Result<std::shared_ptr<arrow::dataset::DatasetFactory>> createRadosDataset(std::shared_ptr<arrow::dataset::connection::RadosConnection>& connection, const std::string& uri, int file_format_id, JNIEnv* env) {
+arrow::Result<std::shared_ptr<arrow::dataset::DatasetFactory>> createRadosDatasetFactory(std::shared_ptr<arrow::dataset::connection::RadosConnection>& connection, const std::string& uri, int file_format_id) {
     std::shared_ptr<arrow::dataset::FileFormat> file_format;
     switch(file_format_id) {
         case FORMAT_PARQUET: file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(connection); break;
@@ -666,7 +667,8 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_releaseBuffe
 /// \return native instance reference to created connection.
 JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_rados_JniWrapper_createConnection(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring cls_name) {
     JNI_METHOD_START
-        return CreateNativeRef(createRadosConnection(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name)));
+    ARROW_LOG(WARNING) << "Creating connection\n";
+    return CreateNativeRef(createRadosConnection(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name)));
     JNI_METHOD_END(-1L)
 }
 
@@ -702,7 +704,7 @@ JNIEXPORT jlong JNICALL
 Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactorySimple(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring cls_name, jstring uri, jint file_format_id) {
   JNI_METHOD_START
   auto connection = createRadosConnection(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name));
-  auto dataset = JniGetOrThrow(createRadosDataset(connection, JStringToCString(env, uri), file_format_id, env));
+  auto dataset = JniGetOrThrow(createRadosDatasetFactory(connection, JStringToCString(env, uri), file_format_id));
   return CreateNativeRef(dataset);
   JNI_METHOD_END(-1L)
 }
@@ -722,9 +724,12 @@ Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactorySimple(JNI
 JNIEXPORT jlong JNICALL
 Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jlong connection_id, jstring uri, jint file_format_id) {
     JNI_METHOD_START
-        auto connection = RetrieveNativeInstance<arrow::dataset::connection::RadosConnection>(connection_id);
-        auto dataset = JniGetOrThrow(createRadosDataset(connection, JStringToCString(env, uri), file_format_id, env));
-        return CreateNativeRef(dataset);
-
+    ARROW_LOG(WARNING) << "Creating RadosDatasetFactory\n";
+    auto connection = RetrieveNativeInstance<arrow::dataset::connection::RadosConnection>(connection_id);
+    ARROW_LOG(WARNING) << "Connection retrieved.\n";
+    auto datasetFactory = JniGetOrThrow(
+            createRadosDatasetFactory(connection, JStringToCString(env, uri), file_format_id));
+    ARROW_LOG(WARNING) << "DatasetFactory created.\n";
+    return CreateNativeRef(datasetFactory);
     JNI_METHOD_END(-1L)
 }
