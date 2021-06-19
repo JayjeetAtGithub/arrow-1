@@ -58,9 +58,16 @@ namespace dataset {
 ///
 /// @{
 
+namespace connection {
+/// \brief An interface for general connections.
+class ARROW_DS_EXPORT Connection {
+    virtual Status connect() = 0;
+};
+
+
 /// \brief An interface to connect to a RADOS cluster and hold the connection
 /// information for usage in later stages.
-class ARROW_DS_EXPORT RadosCluster {
+class ARROW_DS_EXPORT RadosConnection : public Connection {
  public:
   struct RadosConnectionCtx {
     std::string ceph_config_path;
@@ -74,14 +81,14 @@ class ARROW_DS_EXPORT RadosCluster {
                        : ceph_config_path(ceph_config_path), data_pool(data_pool), user_name(user_name),
                        cluster_name(cluster_name), cls_name(cls_name) {}
   };
-  explicit RadosCluster(RadosConnectionCtx& ctx)
-      : ctx(ctx), rados(new RadosWrapper()), ioCtx(new IoCtxWrapper()) {}
+  explicit RadosConnection(RadosConnectionCtx& ctx)
+      : Connection(), ctx(ctx), rados(new RadosWrapper()), ioCtx(new IoCtxWrapper()) {}
 
-  ~RadosCluster() { Shutdown(); }
+   ~RadosConnection() override { shutdown(); }
 
   /// \brief Connect to the Rados cluster.
   /// \return Status.
-  Status Connect() {
+  Status connect() {
     if (rados->init2(ctx.user_name.c_str(), ctx.cluster_name.c_str(), 0))
       return Status::Invalid("librados::init2 returned non-zero exit code.");
 
@@ -99,7 +106,7 @@ class ARROW_DS_EXPORT RadosCluster {
 
   /// \brief Shutdown the connection to the Rados cluster.
   /// \return Status.
-  Status Shutdown() {
+  Status shutdown() {
     rados->shutdown();
     return Status::OK();
   }
@@ -108,13 +115,13 @@ class ARROW_DS_EXPORT RadosCluster {
   RadosInterface* rados;
   IoCtxInterface* ioCtx;
 };
-
+}
 /// \brief Interface for translating the name of a file in CephFS to its
 /// corresponding object ID in RADOS assuming 1:1 mapping between a file
 /// and its underlying object.
 class ARROW_DS_EXPORT DirectObjectAccess {
  public:
-  explicit DirectObjectAccess(const std::shared_ptr<RadosCluster>& cluster)
+  explicit DirectObjectAccess(const std::shared_ptr<RadosConnection>& cluster)
       : cluster_(std::move(cluster)) {}
 
   /// \brief Executes the POSIX stat call on a file.
@@ -154,14 +161,14 @@ class ARROW_DS_EXPORT DirectObjectAccess {
   }
 
  protected:
-  std::shared_ptr<RadosCluster> cluster_;
+  std::shared_ptr<RadosConnection> cluster_;
 };
 
 /// \brief A ParquetFileFormat implementation that offloads the fragment
 /// scan operations to the Ceph OSDs
 class ARROW_DS_EXPORT RadosParquetFileFormat : public ParquetFileFormat {
  public:
-  explicit RadosParquetFileFormat(const std::string&, const std::string&, const std::string&, const std::string&, const std::string&);
+  explicit RadosParquetFileFormat(std::shared_ptr<RadosConnection>& conn);
 
   explicit RadosParquetFileFormat(std::shared_ptr<DirectObjectAccess> doa)
       : doa_(std::move(doa)) {}
