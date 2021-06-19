@@ -35,15 +35,39 @@ public class JniWrapper {
   }
 
   /**
-   * Creates dataset factory for reading RADOS-stored files.
-   * @param path_to_config full path to config for Ceph remote
-   * @param data_pool pool name to use
-   * @param user_name username on ceph cluster
-   * @param cluster_name cluster name on ceph cluster
-   * @param path full path of the file on the Ceph remote
-   * @param fileFormat format ID
-   * @return identifier for native datasetfactory
+   * Creates a connection to a remote cluster, using given parameters.
+   * @param path_to_config full path to config for Ceph remote.
+   * @param data_pool pool name to use.
+   * @param user_name username on ceph cluster.
+   * @param cluster_name cluster name on ceph cluster.
+   * @param cls_name CLS name to load.
+   * @return identifier for native connection.
    */
-  public native long makeRadosDatasetFactory(String path_to_config, String data_pool, String user_name, String cluster_name, String cls_name, String path, int fileFormat);
+  public native long createConnection(String path_to_config, String data_pool, String user_name, String cluster_name, String cls_name);
+
+  /**
+   * Creates dataset factory for reading RADOS-stored files. Builds a connection on the fly.
+   * @implNote When calling this multiple times, we make multiple (redundant) connections to the same cluster. Use {@link #makeRadosDatasetFactory(long, String, int)} instead in these cases.
+   * @see #makeRadosDatasetFactory(long, String, int)
+   * @param path_to_config full path to config for Ceph remote.
+   * @param data_pool pool name to use.
+   * @param user_name username on ceph cluster.
+   * @param cluster_name cluster name on ceph cluster.
+   * @param cls_name CLS name to load.
+   * @param path full path of the file on the Ceph remote.
+   * @param fileFormat format ID.
+   * @return identifier for native datasetfactory.
+   */
+  public native long makeRadosDatasetFactorySimple(String path_to_config, String data_pool, String user_name, String cluster_name, String cls_name, String path, int fileFormat);
+
+
+  /**
+   * Creates dataset factory for reading RADOS-stored files. Uses an existing connection.
+   * @param connectionId ID of created native connection.
+   * @param path full path of the file on the Ceph remote.
+   * @param fileFormat format ID.
+   * @return identifier for native datasetfactory.
+   */
+  public native long makeRadosDatasetFactory(long connectionId, String path, int fileFormat);
 
 }

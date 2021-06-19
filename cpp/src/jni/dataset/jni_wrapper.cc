@@ -361,16 +361,13 @@ std::shared_ptr<arrow::dataset::connection::RadosConnection> createRadosConnecti
 arrow::Result<std::shared_ptr<arrow::dataset::DatasetFactory>> createRadosDataset(std::shared_ptr<arrow::dataset::connection::RadosConnection>& connection, const std::string& uri, int file_format_id, JNIEnv* env) {
     std::shared_ptr<arrow::dataset::FileFormat> file_format;
     switch(file_format_id) {
-        case FORMAT_PARQUET:
-            file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(connection);
-            break;
+        case FORMAT_PARQUET: file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(connection); break;
         default:
             return arrow::Status::Invalid("RadosDatasetFactory is not capable yet of reading given fileformat: fileformat="+std::to_string(file_format_id));
     }
 
     arrow::dataset::FileSystemFactoryOptions options;
-    std::shared_ptr<arrow::dataset::DatasetFactory> d = JniGetOrThrow(arrow::dataset::FileSystemDatasetFactory::Make(
-            uri, file_format, options));
+    return JniGetOrThrow(arrow::dataset::FileSystemDatasetFactory::Make(uri, file_format, options));
 }
 
 /*

@@ -29,8 +29,15 @@ public class RadosDatasetFactory extends NativeDatasetFactory {
     super(allocator, memoryPool, createNative(format, path_to_config, data_pool, user_name, cluster_name, cls_name, path));
   }
 
+  public RadosDatasetFactory(BufferAllocator allocator, NativeMemoryPool memoryPool, FileFormat format, Connection connection, String path) {
+    super(allocator, memoryPool, createNative(format, connection, path));
+  }
+
+  private static long createNative(FileFormat format, Connection connection, String path) {
+    return JniWrapper.get().makeRadosDatasetFactory(connection.id(), path, format.id());
+  }
   private static long createNative(FileFormat format, String path_to_config, String data_pool, String user_name, String cluster_name, String cls_name, String path) {
-    return JniWrapper.get().makeRadosDatasetFactory(path_to_config, data_pool, user_name, cluster_name, cls_name, "file://" + path, format.id());
+    return JniWrapper.get().makeRadosDatasetFactorySimple(path_to_config, data_pool, user_name, cluster_name, cls_name, "file://" + path, format.id());
   }
 
 }

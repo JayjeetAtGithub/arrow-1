@@ -61,7 +61,11 @@ namespace dataset {
 namespace connection {
 /// \brief An interface for general connections.
 class ARROW_DS_EXPORT Connection {
+  public:
     virtual Status connect() = 0;
+
+    Connection() = default;
+    virtual ~Connection() = default;
 };
 
 
@@ -121,7 +125,7 @@ class ARROW_DS_EXPORT RadosConnection : public Connection {
 /// and its underlying object.
 class ARROW_DS_EXPORT DirectObjectAccess {
  public:
-  explicit DirectObjectAccess(const std::shared_ptr<RadosConnection>& cluster)
+  explicit DirectObjectAccess(const std::shared_ptr<connection::RadosConnection>& cluster)
       : cluster_(std::move(cluster)) {}
 
   /// \brief Executes the POSIX stat call on a file.
@@ -161,14 +165,14 @@ class ARROW_DS_EXPORT DirectObjectAccess {
   }
 
  protected:
-  std::shared_ptr<RadosConnection> cluster_;
+  std::shared_ptr<connection::RadosConnection> cluster_;
 };
 
 /// \brief A ParquetFileFormat implementation that offloads the fragment
 /// scan operations to the Ceph OSDs
 class ARROW_DS_EXPORT RadosParquetFileFormat : public ParquetFileFormat {
  public:
-  explicit RadosParquetFileFormat(std::shared_ptr<RadosConnection>& conn);
+  explicit RadosParquetFileFormat(std::shared_ptr<connection::RadosConnection>& conn);
 
   explicit RadosParquetFileFormat(std::shared_ptr<DirectObjectAccess> doa)
       : doa_(std::move(doa)) {}
