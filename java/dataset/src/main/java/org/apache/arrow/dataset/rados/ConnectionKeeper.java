@@ -38,7 +38,7 @@ public abstract class ConnectionKeeper<T, U extends Connection> implements Close
         U construct(T t);
     }
 
-    protected ConcurrentHashMap<T, U> map;
+    protected ConcurrentHashMap<T, U> map = new ConcurrentHashMap<>();
     protected final Object putLock = new Object();
 
     protected ConnectionKeeper() {}
