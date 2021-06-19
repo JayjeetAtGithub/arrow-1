@@ -17,10 +17,10 @@
 
 package org.apache.arrow.dataset.rados;
 
+import org.apache.arrow.dataset.file.FileFormat;
 import org.apache.arrow.dataset.jni.NativeDatasetFactory;
 import org.apache.arrow.dataset.jni.NativeMemoryPool;
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.dataset.file.FileFormat;
 
 /** Java binding of the C++ RadosDatasetFactory. */
 public class RadosDatasetFactory extends NativeDatasetFactory {

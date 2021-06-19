@@ -39,8 +39,6 @@ public class JniWrapper {
    * intermediate shared_ptr of the factory instance.
    * @param path full path of the file
    * @param fileFormat file format ID
-   * @param startOffset random read position. -1 for reading from start.
-   * @param length reading length. -1 for reading all bytes of the file.
    * @return the native pointer of the arrow::dataset::FileSystemDatasetFactory instance.
    * @see FileFormat
    */
