@@ -325,7 +325,6 @@ class ARROW_DS_EXPORT SyncScanner : public Scanner {
               std::shared_ptr<ScanOptions> scan_options)
       : Scanner(std::move(scan_options)), fragment_(std::move(fragment)) {}
 
-  Result<TaggedRecordBatchIterator> ScanBatchesWithWeakFilter() override;
   Result<TaggedRecordBatchIterator> ScanBatches() override;
   Result<ScanTaskIterator> Scan() override;
   Status Scan(std::function<Status(TaggedRecordBatch)> visitor) override;
@@ -363,40 +362,6 @@ Result<TaggedRecordBatchIterator> SyncScanner::ScanBatches(
     if (!IsIterationEnd(batch)) return batch;
     RETURN_NOT_OK(task_group->Finish());
     return IterationEnd<TaggedRecordBatch>();
-  });
-}
-
-Result<TaggedRecordBatchIterator> SyncScanner::ScanBatchesWithWeakFilter() {
-  ARROW_ASSIGN_OR_RAISE(auto fragment_it, GetFragments())
-  auto fn = [this](const std::shared_ptr<Fragment>& fragment) -> Result<ScanTaskIterator> {
-      ARROW_ASSIGN_OR_RAISE(auto scan_task_it, fragment->Scan(scan_options_));
-
-      auto partition = fragment->partition_expression();
-      // Apply the projection to incoming RecordBatches by
-      // wrapping the ScanTask with a FilterAndProjectScanTask,
-      // ignore filters.
-      auto wrap_scan_task =
-              [partition](std::shared_ptr<ScanTask> task) -> std::shared_ptr<ScanTask> {
-                  return std::make_shared<FilterAndProjectScanTask>(std::move(task), partition);
-              };
-
-      return MakeMapIterator(wrap_scan_task, std::move(scan_task_it));
-  };
-
-  // Iterator<Iterator<ScanTask>>
-  auto maybe_scantask_it = MakeMaybeMapIterator(fn, std::move(fragment_it));
-  auto scan_task_it = MakeFlattenIterator(std::move(maybe_scantask_it));
-
-  auto task_group = scan_options_->TaskGroup();
-  auto state = std::make_shared<ScanBatchesState>(std::move(scan_task_it), task_group);
-  for (int i = 0; i < scan_options_->fragment_readahead; i++) {
-    state->PushScanTask();
-  }
-  return MakeFunctionIterator([task_group, state]() -> Result<TaggedRecordBatch> {
-      ARROW_ASSIGN_OR_RAISE(auto batch, state->Pop());
-      if (!IsIterationEnd(batch)) return batch;
-      RETURN_NOT_OK(task_group->Finish());
-      return IterationEnd<TaggedRecordBatch>();
   });
 }
 
@@ -896,8 +861,8 @@ Status ScannerBuilder::UseThreads(bool use_threads) {
 }
 
 Status ScannerBuilder::FragmentReadahead(int fragment_readahead) {
-  if (fragment_readahead <= 0) {
-    return Status::Invalid("FragmentReadahead must be greater than 0, got ",
+  if (fragment_readahead < 0) {
+    return Status::Invalid("FragmentReadahead must be equal to or greater than 0, got ",
                            fragment_readahead);
   }
   scan_options_->fragment_readahead = fragment_readahead;

@@ -82,7 +82,7 @@ public class NativeDatasetTest {
 
 
     List<? extends ScanTask> scanTasks = collect(dataset
-        .newScan(new ScanOptions(new String[0], Filter.EMPTY, 100)).scan());
+        .newScan(new ScanOptions.Builder().setBatchSize(100).build()).scan());
     Assert.assertEquals(taskCount, scanTasks.size());
 
     List<? extends ScanTask.ArrowBundledVectors> data = scanTasks.stream()
@@ -159,7 +159,7 @@ public class NativeDatasetTest {
         path);
     Schema schema = factory.inspect();
     NativeDataset dataset = factory.finish(schema);
-    ScanOptions scanOptions = new ScanOptions(new String[]{"id", "title"}, Filter.EMPTY, 100);
+    ScanOptions scanOptions = new ScanOptions.Builder().setColumns(new String[]{"id", "title"}).setBatchSize(100).build();
     Scanner scanner = dataset.newScan(scanOptions);
     List<? extends ScanTask> scanTasks = collect(scanner.scan());
     Assert.assertEquals(1, scanTasks.size());
@@ -266,7 +266,7 @@ public class NativeDatasetTest {
         path);
     Schema schema = factory.inspect();
     NativeDataset dataset = factory.finish(schema);
-    ScanOptions scanOptions = new ScanOptions(new String[]{"id", "title"}, Filter.EMPTY, 100);
+    ScanOptions scanOptions = new ScanOptions.Builder().setColumns(new String[]{"id", "title"}).setBatchSize(100).build();
     Scanner scanner = dataset.newScan(scanOptions);
     List<? extends ScanTask> scanTasks = collect(scanner.scan());
     Assert.assertEquals(1, scanTasks.size());
@@ -310,7 +310,7 @@ public class NativeDatasetTest {
         path);
     Schema schema = factory.inspect();
     NativeDataset dataset = factory.finish(schema);
-    ScanOptions scanOptions = new ScanOptions(new String[]{}, Filter.EMPTY, 100);
+    ScanOptions scanOptions = new ScanOptions.Builder().setColumns(new String[]{}).setBatchSize(100).build();
     Scanner scanner = dataset.newScan(scanOptions);
     List<? extends ScanTask> scanTasks = collect(scanner.scan());
     Assert.assertEquals(1, scanTasks.size());

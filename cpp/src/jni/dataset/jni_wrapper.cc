@@ -155,7 +155,7 @@ class DisposableScannerAdaptor {
 
   static arrow::Result<std::shared_ptr<DisposableScannerAdaptor>> Create(
       std::shared_ptr<arrow::dataset::Scanner> scanner) {
-    ARROW_ASSIGN_OR_RAISE(auto batch_itr, scanner->ScanBatchesWithWeakFilter())
+    ARROW_ASSIGN_OR_RAISE(auto batch_itr, scanner->ScanBatches())
     return std::make_shared<DisposableScannerAdaptor>(scanner, std::move(batch_itr));
   }
 
@@ -508,11 +508,11 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_closeDataset
 /*
  * Class:     org_apache_arrow_dataset_jni_JniWrapper
  * Method:    createScanner
- * Signature: (J[Ljava/lang/String;[BJJ)J
+ * Signature: (J[Ljava/lang/String;[BIJJ)J
  */
 JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScanner(
-    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jbyteArray filter, jlong batch_size,
-    jlong memory_pool_id) {
+    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jbyteArray filter, jint fragment_readahead,
+    jlong batch_size, jlong memory_pool_id) {
   JNI_METHOD_START
   arrow::MemoryPool* pool = reinterpret_cast<arrow::MemoryPool*>(memory_pool_id);
   if (pool == nullptr) {
@@ -524,11 +524,21 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScann
       JniGetOrThrow(dataset->NewScan());
   JniAssertOkOrThrow(scanner_builder->Pool(pool));
 
+  // Sets column projection.
   std::vector<std::string> column_vector = ToStringVector(env, columns);
   if (!column_vector.empty()) {
     JniAssertOkOrThrow(scanner_builder->Project(column_vector));
   }
-  JniAssertOkOrThrow(scanner_builder->BatchSize(batch_size));
+
+  // Sets batchsize.
+  if (batch_size >= 0L) {
+      JniAssertOkOrThrow(scanner_builder->BatchSize(batch_size));
+  }
+
+  // Sets fragment readahead.
+  if (fragment_readahead >= 0) {
+      JniAssertOkOrThrow(scanner_builder->FragmentReadahead(fragment_readahead));
+  }
 
   // initialize filters
   jsize exprs_len = env->GetArrayLength(filter);
@@ -541,6 +551,7 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScann
   if (condition.has_root()) {
       JniAssertOkOrThrow(scanner_builder->Filter(translateFilter(condition, env)));
   }
+
   auto scanner = JniGetOrThrow(scanner_builder->Finish());
   std::shared_ptr<DisposableScannerAdaptor> scanner_adaptor =
       JniGetOrThrow(DisposableScannerAdaptor::Create(scanner));

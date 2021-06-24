@@ -99,20 +99,6 @@ inline RecordBatchIterator ProjectRecordBatch(RecordBatchIterator it,
       std::move(it));
 }
 
-class ProjectScanTask : public ScanTask {
- public:
-  explicit ProjectScanTask(std::shared_ptr<ScanTask> task)
-      : ScanTask(task->options(), task->fragment()), task_(std::move(task)) {}
-
-  Result<RecordBatchIterator> Execute() override {
-    ARROW_ASSIGN_OR_RAISE(auto it, task_->Execute());
-    return ProjectRecordBatch(std::move(it), task_->options()->projection, task_->options()->pool);
-  }
-
- private:
-  std::shared_ptr<ScanTask> task_;
-};
-
 class FilterAndProjectScanTask : public ScanTask {
  public:
   explicit FilterAndProjectScanTask(std::shared_ptr<ScanTask> task,
