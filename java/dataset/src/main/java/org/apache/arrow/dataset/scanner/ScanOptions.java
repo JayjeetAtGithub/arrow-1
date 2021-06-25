@@ -24,7 +24,7 @@ import org.apache.arrow.dataset.filter.Filter;
  */
 public class ScanOptions {
   private final String[] columns;
-  private final Filter filter;
+  private final byte[] filter;
   private final int fragmentReadAhead;
   private final long batchSize;
 
@@ -34,7 +34,7 @@ public class ScanOptions {
    * @param filter Filter
    * @param batchSize Maximum row number of each returned {@link org.apache.arrow.vector.VectorSchemaRoot}
    */
-  protected ScanOptions(String[] columns, Filter filter, int fragmentReadAhead, long batchSize) {
+  protected ScanOptions(String[] columns, byte[] filter, int fragmentReadAhead, long batchSize) {
     this.columns = columns;
     this.filter = filter;
     this.fragmentReadAhead = fragmentReadAhead;
@@ -45,7 +45,7 @@ public class ScanOptions {
     return columns;
   }
 
-  public Filter getFilter() {
+  public byte[] getFilter() {
     return filter;
   }
 
@@ -59,7 +59,7 @@ public class ScanOptions {
 
   public static class Builder {
     private String[] columns = new String[0];
-    private Filter filter = Filter.EMPTY;
+    private byte[] filter = Filter.EMPTY.toByteArray();
     private int fragmentReadAhead = -1;
     private long batchSize = -1L;
 
@@ -79,10 +79,18 @@ public class ScanOptions {
      * @param filter filter to apply on all rows of data.
      */
     public Builder setFilter(Filter filter) {
-      this.filter = filter;
+      this.filter = filter.toByteArray();
       return this;
     }
 
+    /**
+     * Sets filter as a probuf-encoded bytearray.
+     * @param filter protobuf-encoded bytearray.
+     */
+    public Builder setFilter(byte[] filter) {
+      this.filter = filter;
+      return this;
+    }
     /**
      * Number of datasource files to read ahead when scanning.
      * Set to a value of `-1` to use the Arrow default readahead.
