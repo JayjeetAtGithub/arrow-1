@@ -21,12 +21,14 @@
 #include "arrow/dataset/api.h"
 #include "arrow/dataset/dataset_internal.h"
 #include "arrow/dataset/file_base.h"
+#include "arrow/dataset/file_rados_parquet.h"
 #include "arrow/filesystem/localfs.h"
 #include "arrow/ipc/api.h"
 #include "arrow/jniutil/jni_util.h"
 #include "arrow/util/iterator.h"
 #include "jni/dataset/DTypes.pb.h"
 #include "org_apache_arrow_dataset_file_JniWrapper.h"
+#include "org_apache_arrow_dataset_rados_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_NativeMemoryPool.h"
 
@@ -73,17 +75,18 @@ void JniAssertOkOrThrow(arrow::Status status) {
 
 void JniThrow(std::string message) { ThrowPendingException(message); }
 
-arrow::Result<std::shared_ptr<arrow::dataset::FileFormat>> GetFileFormat(
-    jint file_format_id) {
-  switch (file_format_id) {
-    case 0:
+#define FORMAT_PARQUET 0
+#define FORMAT_CSV 1
+
+arrow::Result<std::shared_ptr<arrow::dataset::FileFormat>> GetFileFormat(jint id) {
+  switch (id) {
+    case FORMAT_PARQUET:
       return std::make_shared<arrow::dataset::ParquetFileFormat>();
-    case 1:
-      return std::make_shared<arrow::dataset::CsvFileFormat>();
-    default:
-      std::string error_message =
-          "illegal file format id: " + std::to_string(file_format_id);
-      return arrow::Status::Invalid(error_message);
+      case FORMAT_CSV:
+        return std::make_shared<arrow::dataset::CsvFileFormat>();
+        default:
+          std::string error_message = "illegal file format id: " + std::to_string(id);
+          return arrow::Status::Invalid(error_message);
   }
 }
 
@@ -243,6 +246,25 @@ arrow::compute::Expression translateFilter(arrow::dataset::types::Condition cond
                                            JNIEnv* env) {
   const arrow::dataset::types::TreeNode& tree_node = condition.root();
   return translateNode(tree_node, env);
+}
+
+/// \brief Build a RADOS connection.
+/// \return shared_ptr to created connection.
+std::shared_ptr<arrow::dataset::connection::RadosConnection> createRadosConnection(const std::string& path_to_config, const std::string& data_pool, const std::string& user_name, const std::string& cluster_name, const std::string& cls_name){
+  auto ctx = arrow::dataset::connection::RadosConnection::RadosConnectionCtx(path_to_config, data_pool, user_name, cluster_name, cls_name);
+  return std::make_shared<arrow::dataset::connection::RadosConnection>(ctx);
+}
+
+arrow::Result<std::shared_ptr<arrow::dataset::DatasetFactory>> createRadosDatasetFactory(std::shared_ptr<arrow::dataset::connection::RadosConnection>& connection, const std::string& uri, int file_format_id) {
+  std::shared_ptr<arrow::dataset::FileFormat> file_format;
+  switch(file_format_id) {
+    case FORMAT_PARQUET: file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(connection); break;
+    default:
+      return arrow::Status::Invalid("RadosDatasetFactory is not capable yet of reading given fileformat: fileformat="+std::to_string(file_format_id));
+  }
+
+  arrow::dataset::FileSystemFactoryOptions options;
+  return JniGetOrThrow(arrow::dataset::FileSystemDatasetFactory::Make(uri, file_format, options));
 }
 
 /// \brief Simple scan task implementation that is constructed directly
@@ -712,6 +734,25 @@ Java_org_apache_arrow_dataset_file_JniWrapper_newJniMethodReference(JNIEnv* env,
 }
 
 /*
+ * Class:     org_apache_arrow_dataset_rados_JniWrapper
+ * Method:    createConnection
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String)J
+ */
+/*
+ * Options:
+ * 1. Make separate method to build connection object. 'connection factory'.
+ *    We make this thing here accept a connection object reference id. On the JVM side, we maintain a global mapping with all cluster connections, in form (config, pool, user, cluster, cls) -> connection native reference id (long).
+ *    When deconstructing (i.e. stopping Spark entirely, not just a task(!)) we must close all connections in the mapping on the nodes.
+ * 2. Make a dedicated Connection object... No wait, I need that anyway.
+ */
+/// \brief Native implementation to open a RADOS connection.
+/// \return native instance reference to created connection.
+JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_rados_JniWrapper_createConnection(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring cls_name) {
+  JNI_METHOD_START
+  return CreateNativeRef(createRadosConnection(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name)));
+  JNI_METHOD_END(-1L)
+}
+/*
  * Class:     org_apache_arrow_dataset_file_JniWrapper
  * Method:    makeFileSystemDatasetFactory
  * Signature: (Ljava/lang/String;II)J
@@ -727,6 +768,45 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeFileSystemDatasetFactory(
       JniGetOrThrow(arrow::dataset::FileSystemDatasetFactory::Make(
           JStringToCString(env, uri), file_format, options));
   return CreateNativeRef(d);
+  JNI_METHOD_END(-1L)
+}
+
+/*
+ * Class:     org_apache_arrow_dataset_rados_JniWrapper
+ * Method:    makeRadosDatasetFactory
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;II)J
+ */
+/// \brief Simple implementation for a RADOSDatasetFactory. Use this ONLY if you need a RADOSDatasetFactory once.
+/// When more calls to the cluster are needed (e.g. for reading other files another
+/// \return native instance reference to created connection.
+JNIEXPORT jlong JNICALL
+Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactorySimple(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring cls_name, jstring uri, jint file_format_id) {
+  JNI_METHOD_START
+  auto connection = createRadosConnection(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name));
+  auto dataset = JniGetOrThrow(createRadosDatasetFactory(connection, JStringToCString(env, uri), file_format_id));
+  return CreateNativeRef(dataset);
+  JNI_METHOD_END(-1L)
+}
+
+
+/*
+ * Class:     org_apache_arrow_dataset_rados_JniWrapper
+ * Method:    makeRadosDatasetFactory
+ * Signature: (J;Ljava/lang/String;II)J
+ */
+/// \brief Standard implementation for a RADOSDatasetFactory. Use this when using a Connection multiple times.
+/// Using this function ensures the connection will be reused, which is (depending on the connection)
+/// a lot less impactful on performance.
+///
+/// To obtain a connection reference, use `Java_org_apache_arrow_dataset_rados_JniWrapper_createConnection`.
+/// \return native instance reference to created connection.
+JNIEXPORT jlong JNICALL
+Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jlong connection_id, jstring uri, jint file_format_id) {
+  JNI_METHOD_START
+  auto connection = RetrieveNativeInstance<arrow::dataset::connection::RadosConnection>(connection_id);
+  auto datasetFactory = JniGetOrThrow(
+      createRadosDatasetFactory(connection, JStringToCString(env, uri), file_format_id));
+  return CreateNativeRef(datasetFactory);
   JNI_METHOD_END(-1L)
 }
 
