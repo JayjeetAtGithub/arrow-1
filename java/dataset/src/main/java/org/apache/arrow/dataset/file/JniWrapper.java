@@ -36,6 +36,22 @@ public class JniWrapper {
   }
 
   /**
+   * Create a Jni global reference for the object.
+   * @param object the input object
+   * @return the native pointer of global reference object.
+   */
+  public native long newJniGlobalReference(Object object);
+
+  /**
+   * Create a Jni method reference.
+   * @param classSignature signature of the class defining the target method
+   * @param methodName method name
+   * @param methodSignature signature of the target method
+   * @return the native pointer of method reference object.
+   */
+  public native long newJniMethodReference(String classSignature, String methodName,
+      String methodSignature);
+  /**
    * Create FileSystemDatasetFactory and return its native pointer. The pointer is pointing to a
    * intermediate shared_ptr of the factory instance.
    * @param path full path of the file
