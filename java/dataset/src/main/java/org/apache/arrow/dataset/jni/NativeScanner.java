@@ -87,7 +87,7 @@ public class NativeScanner implements Scanner {
           return false;
         }
         peek = UnsafeRecordBatchSerializer.deserializeUnsafe(context.getAllocator(), bytes);
-          return true;
+        return true;
       }
 
       @Override

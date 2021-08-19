@@ -43,7 +43,7 @@ set_source_files_properties(${PROTO_OUTPUT_FILES} PROPERTIES GENERATED TRUE)
 
 get_filename_component(ABS_ARROW_DATASET_PROTO
                        ${CMAKE_SOURCE_DIR}/src/jni/dataset/proto/DTypes.proto ABSOLUTE)
-message("Protobuf protoc evaluates to '${ARROW_PROTOBUF_PROTOC}'")
+
 add_custom_command(OUTPUT ${PROTO_OUTPUT_FILES}
                    COMMAND ${ARROW_PROTOBUF_PROTOC}
                            --proto_path
@@ -61,7 +61,7 @@ set(PROTO_SRCS "${PROTO_OUTPUT_DIR}/DTypes.pb.cc")
 
 set(PROTO_HDRS "${PROTO_OUTPUT_DIR}/DTypes.pb.h")
 
-set(ARROW_DATASET_JNI_SOURCES jni_wrapper.cc jni_util.cc ${PROTO_SRCS})
+set(ARROW_DATASET_JNI_SOURCES jni_wrapper.cc ${PROTO_SRCS})
 
 add_arrow_lib(arrow_dataset_jni
               BUILD_SHARED
@@ -85,10 +85,3 @@ add_arrow_lib(arrow_dataset_jni
 arrow_install_all_headers("jni/dataset")
 
 add_dependencies(arrow_dataset_jni ${ARROW_DATASET_JNI_LIBRARIES})
-
-add_arrow_test(dataset_jni_test
-               SOURCES
-               jni_util_test.cc
-               jni_util.cc
-               EXTRA_INCLUDES
-               ${JNI_INCLUDE_DIRS})

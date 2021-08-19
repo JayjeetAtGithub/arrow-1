@@ -27,7 +27,7 @@ public class NativeMemoryPool implements AutoCloseable {
     JniLoader.get().ensureLoaded();
   }
 
-  public NativeMemoryPool(long nativeInstanceId) {
+  private NativeMemoryPool(long nativeInstanceId) {
     this.nativeInstanceId = nativeInstanceId;
   }
 

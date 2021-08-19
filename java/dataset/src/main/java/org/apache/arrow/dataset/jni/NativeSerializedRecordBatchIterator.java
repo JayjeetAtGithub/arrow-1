@@ -17,25 +17,19 @@
 
 package org.apache.arrow.dataset.jni;
 
+import java.util.Iterator;
+
 /**
- * Hold pointers to a Arrow C++ DictionaryBatch.
+ * Iterate on flatbuffers-serialized {@link org.apache.arrow.vector.ipc.message.ArrowRecordBatch}.
+ * <p>
+ * {@link #next()} should be called from C++ scanner to read Java-generated Arrow data.
  */
-public class NativeDictionaryBatchHandle extends NativeRecordBatchHandle {
+public interface NativeSerializedRecordBatchIterator extends Iterator<byte[]>, AutoCloseable {
 
   /**
-   * Dictionary ID.
+   * Return next serialized {@link org.apache.arrow.vector.ipc.message.ArrowRecordBatch} Java
+   * byte array.
    */
-  private final long id;
-
-  /**
-   * Constructor.
-   */
-  public NativeDictionaryBatchHandle(long id, long numRows, Field[] fields, Buffer[] buffers) {
-    super(numRows, fields, buffers);
-    this.id = id;
-  }
-
-  public long getId() {
-    return id;
-  }
+  @Override
+  byte[] next();
 }

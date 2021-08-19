@@ -52,7 +52,7 @@ public class JniWrapper {
    * Create Dataset from a DatasetFactory and get the native pointer of the Dataset.
    *
    * @param datasetFactoryId the native pointer of the arrow::dataset::DatasetFactory instance.
-   * @param schema the predefined schema of the resulting Dataset.
+   * @param schema           the predefined schema of the resulting Dataset.
    * @return the native pointer of the arrow::dataset::Dataset instance.
    */
   public native long createDataset(long datasetFactoryId, byte[] schema);
@@ -87,6 +87,7 @@ public class JniWrapper {
 
   /**
    * Release the Scanner by destroying its reference held by JNI wrapper.
+   *
    * @param scannerId the native pointer of the arrow::dataset::Scanner instance.
    */
   public native void closeScanner(long scannerId);
@@ -100,8 +101,10 @@ public class JniWrapper {
    *     the overall layout of the native record batch.
    */
   public native byte[] nextRecordBatch(long scannerId);
+
   /**
    * Release the Buffer by destroying its reference held by JNI wrapper.
+   *
    * @param bufferId the native pointer of the arrow::Buffer instance.
    */
   public native void releaseBuffer(long bufferId);
