@@ -19,20 +19,14 @@
 
 #include "arrow/array.h"
 #include "arrow/dataset/api.h"
+#include "arrow/dataset/dataset_internal.h"
 #include "arrow/dataset/file_base.h"
-#include "arrow/dataset/file_rados_parquet.h"
 #include "arrow/filesystem/localfs.h"
 #include "arrow/ipc/api.h"
+#include "arrow/jniutil/jni_util.h"
 #include "arrow/util/iterator.h"
-
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/message.h>
-#include <jni/dataset/DTypes.pb.h>
-
-#include "jni/dataset/jni_util.h"
-
+#include "jni/dataset/DTypes.pb.h"
 #include "org_apache_arrow_dataset_file_JniWrapper.h"
-#include "org_apache_arrow_dataset_rados_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_JniWrapper.h"
 #include "org_apache_arrow_dataset_jni_NativeMemoryPool.h"
 
@@ -42,14 +36,11 @@ jclass illegal_access_exception_class;
 jclass illegal_argument_exception_class;
 jclass runtime_exception_class;
 
-jclass record_batch_handle_class;
-jclass record_batch_handle_field_class;
-jclass record_batch_handle_buffer_class;
+jclass serialized_record_batch_iterator_class;
 jclass java_reservation_listener_class;
 
-jmethodID record_batch_handle_constructor;
-jmethodID record_batch_handle_field_constructor;
-jmethodID record_batch_handle_buffer_constructor;
+jmethodID serialized_record_batch_iterator_hasNext;
+jmethodID serialized_record_batch_iterator_next;
 jmethodID reserve_memory_method;
 jmethodID unreserve_memory_method;
 
@@ -82,23 +73,21 @@ void JniAssertOkOrThrow(arrow::Status status) {
 
 void JniThrow(std::string message) { ThrowPendingException(message); }
 
-
-#define FORMAT_PARQUET 0
-#define FORMAT_CSV 1
-
-arrow::Result<std::shared_ptr<arrow::dataset::FileFormat>> GetFileFormat(jint id) {
-    switch (id) {
-        case FORMAT_PARQUET:
-            return std::make_shared<arrow::dataset::ParquetFileFormat>();
-        case FORMAT_CSV:
-            return std::make_shared<arrow::dataset::CsvFileFormat>();
-        default:
-            std::string error_message = "illegal file format id: " + std::to_string(id);
-            return arrow::Status::Invalid(error_message);
-    }
+arrow::Result<std::shared_ptr<arrow::dataset::FileFormat>> GetFileFormat(
+    jint file_format_id) {
+  switch (file_format_id) {
+    case 0:
+      return std::make_shared<arrow::dataset::ParquetFileFormat>();
+    case 1:
+      return std::make_shared<arrow::dataset::CsvFileFormat>();
+    default:
+      std::string error_message =
+          "illegal file format id: " + std::to_string(file_format_id);
+      return arrow::Status::Invalid(error_message);
+  }
 }
 
-class ReserveFromJava : public arrow::dataset::jni::ReservationListener {
+class ReserveFromJava : public arrow::jniutil::ReservationListener {
  public:
   ReserveFromJava(JavaVM* vm, jobject java_reservation_listener)
       : vm_(vm), java_reservation_listener_(java_reservation_listener) {}
@@ -109,11 +98,7 @@ class ReserveFromJava : public arrow::dataset::jni::ReservationListener {
       return arrow::Status::Invalid("JNIEnv was not attached to current thread");
     }
     env->CallObjectMethod(java_reservation_listener_, reserve_memory_method, size);
-    if (env->ExceptionCheck()) {
-      env->ExceptionDescribe();
-      env->ExceptionClear();
-      return arrow::Status::Invalid("Error calling Java side reservation listener");
-    }
+    RETURN_NOT_OK(arrow::jniutil::CheckException(env));
     return arrow::Status::OK();
   }
 
@@ -123,11 +108,7 @@ class ReserveFromJava : public arrow::dataset::jni::ReservationListener {
       return arrow::Status::Invalid("JNIEnv was not attached to current thread");
     }
     env->CallObjectMethod(java_reservation_listener_, unreserve_memory_method, size);
-    if (env->ExceptionCheck()) {
-      env->ExceptionDescribe();
-      env->ExceptionClear();
-      return arrow::Status::Invalid("Error calling Java side reservation listener");
-    }
+    RETURN_NOT_OK(arrow::jniutil::CheckException(env));
     return arrow::Status::OK();
   }
 
@@ -176,20 +157,226 @@ class DisposableScannerAdaptor {
   }
 };
 
+bool ParseProtobuf(uint8_t* buf, int bufLen, google::protobuf::Message* msg) {
+  google::protobuf::io::CodedInputStream cis(buf, bufLen);
+  cis.SetRecursionLimit(1000);
+  return msg->ParseFromCodedStream(&cis);
+}
+
+void releaseFilterInput(jbyteArray condition_arr, jbyte* condition_bytes, JNIEnv* env) {
+  env->ReleaseByteArrayElements(condition_arr, condition_bytes, JNI_ABORT);
+}
+
+// fixme in development. Not all node types considered.
+arrow::compute::Expression translateNode(arrow::dataset::types::TreeNode node,
+                                         JNIEnv* env) {
+  if (node.has_fieldnode()) {
+    const arrow::dataset::types::FieldNode& f_node = node.fieldnode();
+    const std::string& name = f_node.name();
+    return arrow::compute::field_ref(name);
+  }
+  if (node.has_intnode()) {
+    const arrow::dataset::types::IntNode& int_node = node.intnode();
+    int32_t val = int_node.value();
+    return arrow::compute::literal(val);
+  }
+  if (node.has_longnode()) {
+    const arrow::dataset::types::LongNode& long_node = node.longnode();
+    int64_t val = long_node.value();
+    return arrow::compute::literal(val);
+  }
+  if (node.has_floatnode()) {
+    const arrow::dataset::types::FloatNode& float_node = node.floatnode();
+    float val = float_node.value();
+    return arrow::compute::literal(val);
+  }
+  if (node.has_doublenode()) {
+    const arrow::dataset::types::DoubleNode& double_node = node.doublenode();
+    double val = double_node.value();
+    return arrow::compute::literal(std::make_shared<arrow::DoubleScalar>(val));
+  }
+  if (node.has_booleannode()) {
+    const arrow::dataset::types::BooleanNode& boolean_node = node.booleannode();
+    bool val = boolean_node.value();
+    return arrow::compute::literal(val);
+  }
+  if (node.has_andnode()) {
+    const arrow::dataset::types::AndNode& and_node = node.andnode();
+    const arrow::dataset::types::TreeNode& left_arg = and_node.leftarg();
+    const arrow::dataset::types::TreeNode& right_arg = and_node.rightarg();
+    return arrow::compute::and_(translateNode(left_arg, env),
+                                translateNode(right_arg, env));
+  }
+  if (node.has_ornode()) {
+    const arrow::dataset::types::OrNode& or_node = node.ornode();
+    const arrow::dataset::types::TreeNode& left_arg = or_node.leftarg();
+    const arrow::dataset::types::TreeNode& right_arg = or_node.rightarg();
+    return arrow::compute::or_(translateNode(left_arg, env),
+                               translateNode(right_arg, env));
+  }
+  if (node.has_cpnode()) {
+    const arrow::dataset::types::ComparisonNode& cp_node = node.cpnode();
+    const std::string& op_name = cp_node.opname();
+    const arrow::dataset::types::TreeNode& left_arg = cp_node.leftarg();
+    const arrow::dataset::types::TreeNode& right_arg = cp_node.rightarg();
+    return arrow::compute::call(
+        op_name, {translateNode(left_arg, env), translateNode(right_arg, env)});
+  }
+  if (node.has_notnode()) {
+    const arrow::dataset::types::NotNode& not_node = node.notnode();
+    const ::arrow::dataset::types::TreeNode& child = not_node.args();
+    arrow::compute::Expression translatedChild = translateNode(child, env);
+    return arrow::compute::not_(translatedChild);
+  }
+  if (node.has_isvalidnode()) {
+    const arrow::dataset::types::IsValidNode& is_valid_node = node.isvalidnode();
+    const ::arrow::dataset::types::TreeNode& child = is_valid_node.args();
+    arrow::compute::Expression translatedChild = translateNode(child, env);
+    return arrow::compute::call("is_valid", {translatedChild});
+  }
+  std::string error_message = "Unknown node type";
+  env->ThrowNew(illegal_argument_exception_class, error_message.c_str());
+  return arrow::compute::literal(false);  // unreachable
+}
+
+arrow::compute::Expression translateFilter(arrow::dataset::types::Condition condition,
+                                           JNIEnv* env) {
+  const arrow::dataset::types::TreeNode& tree_node = condition.root();
+  return translateNode(tree_node, env);
+}
+
+/// \brief Simple scan task implementation that is constructed directly
+/// from a record batch iterator (and its corresponding fragment).
+class SimpleIteratorTask : public arrow::dataset::ScanTask {
+ public:
+  SimpleIteratorTask(std::shared_ptr<arrow::dataset::ScanOptions> options,
+                     std::shared_ptr<arrow::dataset::Fragment> fragment,
+                     arrow::RecordBatchIterator itr)
+      : ScanTask(options, fragment) {
+    this->itr_ = std::move(itr);
+  }
+
+  static arrow::Result<std::shared_ptr<SimpleIteratorTask>> Make(
+      arrow::RecordBatchIterator itr,
+      std::shared_ptr<arrow::dataset::ScanOptions> options,
+      std::shared_ptr<arrow::dataset::Fragment> fragment) {
+    return std::make_shared<SimpleIteratorTask>(options, fragment, std::move(itr));
+  }
+
+  arrow::Result<arrow::RecordBatchIterator> Execute() override {
+    if (used_) {
+      return arrow::Status::Invalid(
+          "SimpleIteratorFragment is disposable and"
+          "already scanned");
+    }
+    used_ = true;
+    return std::move(itr_);
+  }
+
+ private:
+  arrow::RecordBatchIterator itr_;
+  bool used_ = false;
+};
+
+/// \brief Simple fragment implementation that is constructed directly
+/// from a record batch iterator.
+class SimpleIteratorFragment : public arrow::dataset::Fragment {
+ public:
+  explicit SimpleIteratorFragment(arrow::RecordBatchIterator itr)
+      : arrow::dataset::Fragment() {
+    itr_ = std::move(itr);
+  }
+
+  static arrow::Result<std::shared_ptr<SimpleIteratorFragment>> Make(
+      arrow::RecordBatchIterator itr) {
+    return std::make_shared<SimpleIteratorFragment>(std::move(itr));
+  }
+
+  arrow::Result<arrow::RecordBatchGenerator> ScanBatchesAsync(
+      const std::shared_ptr<arrow::dataset::ScanOptions>& options) override {
+    return arrow::Status::NotImplemented("Aysnc scan not supported");
+  }
+
+  arrow::Result<arrow::dataset::ScanTaskIterator> Scan(
+      std::shared_ptr<arrow::dataset::ScanOptions> options) override {
+    if (used_) {
+      return arrow::Status::Invalid(
+          "SimpleIteratorFragment is disposable and"
+          "already scanned");
+    }
+    used_ = true;
+    ARROW_ASSIGN_OR_RAISE(
+        auto task, SimpleIteratorTask::Make(std::move(itr_), options, shared_from_this()))
+    return arrow::MakeVectorIterator<std::shared_ptr<arrow::dataset::ScanTask>>({task});
+  }
+
+  std::string type_name() const override { return "simple_iterator"; }
+
+  arrow::Result<std::shared_ptr<arrow::Schema>> ReadPhysicalSchemaImpl() override {
+    return arrow::Status::NotImplemented("No physical schema is readable");
+  }
+
+ private:
+  arrow::RecordBatchIterator itr_;
+  bool used_ = false;
+};
+
+arrow::Result<std::shared_ptr<arrow::RecordBatch>> FromBytes(
+    JNIEnv* env, std::shared_ptr<arrow::Schema> schema, jbyteArray bytes) {
+  ARROW_ASSIGN_OR_RAISE(std::shared_ptr<arrow::RecordBatch> batch,
+                        arrow::jniutil::DeserializeUnsafeFromJava(env, schema, bytes))
+  return batch;
+}
+
+/// \brief Create scanner that scans over Java dataset API's components.
+///
+/// Currently, we use a NativeSerializedRecordBatchIterator as the underlying
+/// Java object to do scanning. Which means, only one single task will
+/// be produced from C++ code.
+arrow::Result<std::shared_ptr<arrow::dataset::Scanner>> MakeJavaDatasetScanner(
+    JavaVM* vm, jobject java_serialized_record_batch_iterator,
+    std::shared_ptr<arrow::Schema> schema) {
+  arrow::RecordBatchIterator itr = arrow::MakeFunctionIterator(
+      [vm, java_serialized_record_batch_iterator,
+       schema]() -> arrow::Result<std::shared_ptr<arrow::RecordBatch>> {
+        JNIEnv* env;
+        if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION) != JNI_OK) {
+          return arrow::Status::Invalid("JNIEnv was not attached to current thread");
+        }
+        if (!env->CallBooleanMethod(java_serialized_record_batch_iterator,
+                                    serialized_record_batch_iterator_hasNext)) {
+          return nullptr;  // stream ended
+        }
+        auto bytes = (jbyteArray)env->CallObjectMethod(
+            java_serialized_record_batch_iterator, serialized_record_batch_iterator_next);
+        RETURN_NOT_OK(arrow::jniutil::CheckException(env));
+        ARROW_ASSIGN_OR_RAISE(auto batch, FromBytes(env, schema, bytes));
+        return batch;
+      });
+
+  ARROW_ASSIGN_OR_RAISE(auto fragment, SimpleIteratorFragment::Make(std::move(itr)))
+
+  arrow::dataset::ScannerBuilder scanner_builder(
+      std::move(schema), fragment, std::make_shared<arrow::dataset::ScanOptions>());
+  // Use default memory pool is enough as native allocation is ideally
+  // not being called during scanning Java-based fragments.
+  RETURN_NOT_OK(scanner_builder.Pool(arrow::default_memory_pool()));
+  return scanner_builder.Finish();
+}
 }  // namespace
 
-using arrow::dataset::jni::CreateGlobalClassReference;
-using arrow::dataset::jni::CreateNativeRef;
-using arrow::dataset::jni::FromSchemaByteArray;
-using arrow::dataset::jni::GetMethodID;
-using arrow::dataset::jni::JStringToCString;
-using arrow::dataset::jni::ReleaseNativeRef;
-using arrow::dataset::jni::RetrieveNativeInstance;
-using arrow::dataset::jni::ToSchemaByteArray;
-using arrow::dataset::jni::ToStringVector;
+using arrow::jniutil::CreateGlobalClassReference;
+using arrow::jniutil::CreateNativeRef;
+using arrow::jniutil::FromSchemaByteArray;
+using arrow::jniutil::GetMethodID;
+using arrow::jniutil::JStringToCString;
+using arrow::jniutil::ReleaseNativeRef;
+using arrow::jniutil::RetrieveNativeInstance;
+using arrow::jniutil::ToSchemaByteArray;
+using arrow::jniutil::ToStringVector;
 
-using arrow::dataset::jni::ReservationListenableMemoryPool;
-using arrow::dataset::jni::ReservationListener;
+using arrow::jniutil::ReservationListenableMemoryPool;
+using arrow::jniutil::ReservationListener;
 
 #define JNI_METHOD_START try {
 // macro ended
@@ -215,33 +402,18 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved) {
   runtime_exception_class =
       CreateGlobalClassReference(env, "Ljava/lang/RuntimeException;");
 
-  record_batch_handle_class =
+  serialized_record_batch_iterator_class =
       CreateGlobalClassReference(env,
                                  "Lorg/apache/arrow/"
-                                 "dataset/jni/NativeRecordBatchHandle;");
-  record_batch_handle_field_class =
-      CreateGlobalClassReference(env,
-                                 "Lorg/apache/arrow/"
-                                 "dataset/jni/NativeRecordBatchHandle$Field;");
-  record_batch_handle_buffer_class =
-      CreateGlobalClassReference(env,
-                                 "Lorg/apache/arrow/"
-                                 "dataset/jni/NativeRecordBatchHandle$Buffer;");
+                                 "dataset/jni/NativeSerializedRecordBatchIterator;");
   java_reservation_listener_class =
       CreateGlobalClassReference(env,
                                  "Lorg/apache/arrow/"
                                  "dataset/jni/ReservationListener;");
-
-  record_batch_handle_constructor =
-      JniGetOrThrow(GetMethodID(env, record_batch_handle_class, "<init>",
-                                "(J[Lorg/apache/arrow/dataset/"
-                                "jni/NativeRecordBatchHandle$Field;"
-                                "[Lorg/apache/arrow/dataset/"
-                                "jni/NativeRecordBatchHandle$Buffer;)V"));
-  record_batch_handle_field_constructor =
-      JniGetOrThrow(GetMethodID(env, record_batch_handle_field_class, "<init>", "(JJ)V"));
-  record_batch_handle_buffer_constructor = JniGetOrThrow(
-      GetMethodID(env, record_batch_handle_buffer_class, "<init>", "(JJJJ)V"));
+  serialized_record_batch_iterator_hasNext = JniGetOrThrow(
+      GetMethodID(env, serialized_record_batch_iterator_class, "hasNext", "()Z"));
+  serialized_record_batch_iterator_next = JniGetOrThrow(
+      GetMethodID(env, serialized_record_batch_iterator_class, "next", "()[B"));
   reserve_memory_method =
       JniGetOrThrow(GetMethodID(env, java_reservation_listener_class, "reserve", "(J)V"));
   unreserve_memory_method = JniGetOrThrow(
@@ -259,115 +431,10 @@ void JNI_OnUnload(JavaVM* vm, void* reserved) {
   env->DeleteGlobalRef(illegal_access_exception_class);
   env->DeleteGlobalRef(illegal_argument_exception_class);
   env->DeleteGlobalRef(runtime_exception_class);
-  env->DeleteGlobalRef(record_batch_handle_class);
-  env->DeleteGlobalRef(record_batch_handle_field_class);
-  env->DeleteGlobalRef(record_batch_handle_buffer_class);
+  env->DeleteGlobalRef(serialized_record_batch_iterator_class);
   env->DeleteGlobalRef(java_reservation_listener_class);
 
   default_memory_pool_id = -1L;
-}
-
-bool ParseProtobuf(uint8_t* buf, int bufLen, google::protobuf::Message* msg) {
-    google::protobuf::io::CodedInputStream cis(buf, bufLen);
-    cis.SetRecursionLimit(1000);
-    return msg->ParseFromCodedStream(&cis);
-}
-
-void releaseFilterInput(jbyteArray condition_arr, jbyte* condition_bytes, JNIEnv* env) {
-    env->ReleaseByteArrayElements(condition_arr, condition_bytes, JNI_ABORT);
-}
-
-// fixme in development. Not all node types considered.
-arrow::compute::Expression translateNode(arrow::dataset::types::TreeNode node, JNIEnv* env) {
-    if (node.has_fieldnode()) {
-        const arrow::dataset::types::FieldNode& f_node = node.fieldnode();
-        const std::string& name = f_node.name();
-        return arrow::compute::field_ref(name);
-    }
-    if (node.has_intnode()) {
-        const arrow::dataset::types::IntNode& int_node = node.intnode();
-        int32_t val = int_node.value();
-        return arrow::compute::literal(val);
-    }
-    if (node.has_longnode()) {
-        const arrow::dataset::types::LongNode& long_node = node.longnode();
-        int64_t val = long_node.value();
-        return arrow::compute::literal(val);
-    }
-    if (node.has_floatnode()) {
-        const arrow::dataset::types::FloatNode& float_node = node.floatnode();
-        float val = float_node.value();
-        return arrow::compute::literal(val);
-    }
-    if (node.has_doublenode()) {
-        const arrow::dataset::types::DoubleNode& double_node = node.doublenode();
-        double val = double_node.value();
-        return arrow::compute::literal(std::make_shared<arrow::DoubleScalar>(val));
-    }
-    if (node.has_booleannode()) {
-        const arrow::dataset::types::BooleanNode& boolean_node = node.booleannode();
-        bool val = boolean_node.value();
-        return arrow::compute::literal(val);
-    }
-    if (node.has_andnode()) {
-        const arrow::dataset::types::AndNode& and_node = node.andnode();
-        const arrow::dataset::types::TreeNode& left_arg = and_node.leftarg();
-        const arrow::dataset::types::TreeNode& right_arg = and_node.rightarg();
-        return arrow::compute::and_(translateNode(left_arg, env), translateNode(right_arg, env));
-    }
-    if (node.has_ornode()) {
-        const arrow::dataset::types::OrNode& or_node = node.ornode();
-        const arrow::dataset::types::TreeNode& left_arg = or_node.leftarg();
-        const arrow::dataset::types::TreeNode& right_arg = or_node.rightarg();
-        return arrow::compute::or_(translateNode(left_arg, env), translateNode(right_arg, env));
-    }
-    if (node.has_cpnode()) {
-        const arrow::dataset::types::ComparisonNode& cp_node = node.cpnode();
-        const std::string& op_name = cp_node.opname();
-        const arrow::dataset::types::TreeNode& left_arg = cp_node.leftarg();
-        const arrow::dataset::types::TreeNode& right_arg = cp_node.rightarg();
-        return arrow::compute::call(op_name,
-                                    {translateNode(left_arg, env), translateNode(right_arg, env)});
-    }
-    if (node.has_notnode()) {
-        const arrow::dataset::types::NotNode& not_node = node.notnode();
-        const ::arrow::dataset::types::TreeNode& child = not_node.args();
-        arrow::compute::Expression translatedChild = translateNode(child, env);
-        return arrow::compute::not_(translatedChild);
-    }
-    if (node.has_isvalidnode()) {
-        const arrow::dataset::types::IsValidNode& is_valid_node = node.isvalidnode();
-        const ::arrow::dataset::types::TreeNode& child = is_valid_node.args();
-        arrow::compute::Expression translatedChild = translateNode(child, env);
-        return arrow::compute::call("is_valid", {translatedChild});
-    }
-    std::string error_message = "Unknown node type";
-    env->ThrowNew(illegal_argument_exception_class, error_message.c_str());
-    return arrow::compute::literal(false); // unreachable
-}
-
-arrow::compute::Expression translateFilter(arrow::dataset::types::Condition condition, JNIEnv* env) {
-    const arrow::dataset::types::TreeNode& tree_node = condition.root();
-    return translateNode(tree_node, env);
-}
-
-/// \brief Build a RADOS connection.
-/// \return shared_ptr to created connection.
-std::shared_ptr<arrow::dataset::connection::RadosConnection> createRadosConnection(const std::string& path_to_config, const std::string& data_pool, const std::string& user_name, const std::string& cluster_name, const std::string& cls_name){
-    auto ctx = arrow::dataset::connection::RadosConnection::RadosConnectionCtx(path_to_config, data_pool, user_name, cluster_name, cls_name);
-    return std::make_shared<arrow::dataset::connection::RadosConnection>(ctx);
-}
-
-arrow::Result<std::shared_ptr<arrow::dataset::DatasetFactory>> createRadosDatasetFactory(std::shared_ptr<arrow::dataset::connection::RadosConnection>& connection, const std::string& uri, int file_format_id) {
-    std::shared_ptr<arrow::dataset::FileFormat> file_format;
-    switch(file_format_id) {
-        case FORMAT_PARQUET: file_format = std::make_shared<arrow::dataset::RadosParquetFileFormat>(connection); break;
-        default:
-            return arrow::Status::Invalid("RadosDatasetFactory is not capable yet of reading given fileformat: fileformat="+std::to_string(file_format_id));
-    }
-
-    arrow::dataset::FileSystemFactoryOptions options;
-    return JniGetOrThrow(arrow::dataset::FileSystemDatasetFactory::Make(uri, file_format, options));
 }
 
 /*
@@ -399,8 +466,8 @@ Java_org_apache_arrow_dataset_jni_NativeMemoryPool_createListenableMemoryPool(
   }
   std::shared_ptr<ReservationListener> listener =
       std::make_shared<ReserveFromJava>(vm, jlistener_ref);
-  auto memory_pool =
-      new ReservationListenableMemoryPool(arrow::default_memory_pool(), listener);
+  auto memory_pool = new ReservationListenableMemoryPool(arrow::default_memory_pool(),
+                                                         listener, 8 * 1024 * 1024);
   return reinterpret_cast<jlong>(memory_pool);
   JNI_METHOD_END(-1L)
 }
@@ -508,10 +575,10 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_closeDataset
 /*
  * Class:     org_apache_arrow_dataset_jni_JniWrapper
  * Method:    createScanner
- * Signature: (J[Ljava/lang/String;[BIJJ)J
+ * Signature: (J[Ljava/lang/String;[BJJ)J
  */
 JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScanner(
-    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jbyteArray filter, jint fragment_readahead,
+    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jbyteArray filter,
     jlong batch_size, jlong memory_pool_id) {
   JNI_METHOD_START
   arrow::MemoryPool* pool = reinterpret_cast<arrow::MemoryPool*>(memory_pool_id);
@@ -524,32 +591,22 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScann
       JniGetOrThrow(dataset->NewScan());
   JniAssertOkOrThrow(scanner_builder->Pool(pool));
 
-  // Sets column projection.
   std::vector<std::string> column_vector = ToStringVector(env, columns);
   if (!column_vector.empty()) {
     JniAssertOkOrThrow(scanner_builder->Project(column_vector));
   }
-
-  // Sets batchsize.
-  if (batch_size >= 0L) {
-      JniAssertOkOrThrow(scanner_builder->BatchSize(batch_size));
-  }
-
-  // Sets fragment readahead.
-  if (fragment_readahead >= 0) {
-      JniAssertOkOrThrow(scanner_builder->FragmentReadahead(fragment_readahead));
-  }
-
+  JniAssertOkOrThrow(scanner_builder->BatchSize(batch_size));
   // initialize filters
   jsize exprs_len = env->GetArrayLength(filter);
   jbyte* exprs_bytes = env->GetByteArrayElements(filter, 0);
   arrow::dataset::types::Condition condition;
   if (!ParseProtobuf(reinterpret_cast<uint8_t*>(exprs_bytes), exprs_len, &condition)) {
     releaseFilterInput(filter, exprs_bytes, env);
-    JniThrow("bad protobuf message");
+    std::string error_message = "bad protobuf message";
+    env->ThrowNew(illegal_argument_exception_class, error_message.c_str());
   }
   if (condition.has_root()) {
-      JniAssertOkOrThrow(scanner_builder->Filter(translateFilter(condition, env)));
+    JniAssertOkOrThrow(scanner_builder->Filter(translateFilter(condition, env)));
   }
 
   auto scanner = JniGetOrThrow(scanner_builder->Finish());
@@ -593,9 +650,9 @@ Java_org_apache_arrow_dataset_jni_JniWrapper_getSchemaFromScanner(JNIEnv* env, j
 /*
  * Class:     org_apache_arrow_dataset_jni_JniWrapper
  * Method:    nextRecordBatch
- * Signature: (J)Lorg/apache/arrow/dataset/jni/NativeRecordBatchHandle;
+ * Signature: (J)[B
  */
-JNIEXPORT jobject JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_nextRecordBatch(
+JNIEXPORT jbyteArray JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_nextRecordBatch(
     JNIEnv* env, jobject, jlong scanner_id) {
   JNI_METHOD_START
   std::shared_ptr<DisposableScannerAdaptor> scanner_adaptor =
@@ -606,46 +663,7 @@ JNIEXPORT jobject JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_nextRecor
   if (record_batch == nullptr) {
     return nullptr;  // stream ended
   }
-  std::shared_ptr<arrow::Schema> schema = record_batch->schema();
-  jobjectArray field_array =
-      env->NewObjectArray(schema->num_fields(), record_batch_handle_field_class, nullptr);
-
-  std::vector<std::shared_ptr<arrow::Buffer>> buffers;
-  for (int i = 0; i < schema->num_fields(); ++i) {
-    auto column = record_batch->column(i);
-    auto dataArray = column->data();
-    jobject field = env->NewObject(record_batch_handle_field_class,
-                                   record_batch_handle_field_constructor,
-                                   column->length(), column->null_count());
-    env->SetObjectArrayElement(field_array, i, field);
-
-    for (auto& buffer : dataArray->buffers) {
-      buffers.push_back(buffer);
-    }
-  }
-
-  jobjectArray buffer_array =
-      env->NewObjectArray(buffers.size(), record_batch_handle_buffer_class, nullptr);
-
-  for (size_t j = 0; j < buffers.size(); ++j) {
-    auto buffer = buffers[j];
-    uint8_t* data = nullptr;
-    int64_t size = 0;
-    int64_t capacity = 0;
-    if (buffer != nullptr) {
-      data = (uint8_t*)buffer->data();
-      size = buffer->size();
-      capacity = buffer->capacity();
-    }
-    jobject buffer_handle = env->NewObject(record_batch_handle_buffer_class,
-                                           record_batch_handle_buffer_constructor,
-                                           CreateNativeRef(buffer), data, size, capacity);
-    env->SetObjectArrayElement(buffer_array, j, buffer_handle);
-  }
-
-  jobject ret = env->NewObject(record_batch_handle_class, record_batch_handle_constructor,
-                               record_batch->num_rows(), field_array, buffer_array);
-  return ret;
+  return JniGetOrThrow(arrow::jniutil::SerializeUnsafeFromNative(env, record_batch));
   JNI_METHOD_END(nullptr)
 }
 
@@ -662,25 +680,36 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_releaseBuffe
 }
 
 /*
- * Class:     org_apache_arrow_dataset_rados_JniWrapper
- * Method:    createConnection
- * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String)J
+ * Class:     org_apache_arrow_dataset_file_JniWrapper
+ * Method:    newJniGlobalReference
+ * Signature: (Ljava/lang/Object;)J
  */
-/*
- * Options:
- * 1. Make separate method to build connection object. 'connection factory'.
- *    We make this thing here accept a connection object reference id. On the JVM side, we maintain a global mapping with all cluster connections, in form (config, pool, user, cluster, cls) -> connection native reference id (long).
- *    When deconstructing (i.e. stopping Spark entirely, not just a task(!)) we must close all connections in the mapping on the nodes.
- * 2. Make a dedicated Connection object... No wait, I need that anyway.
- */
-/// \brief Native implementation to open a RADOS connection.
-/// \return native instance reference to created connection.
-JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_rados_JniWrapper_createConnection(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring cls_name) {
-    JNI_METHOD_START
-    return CreateNativeRef(createRadosConnection(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name)));
-    JNI_METHOD_END(-1L)
+JNIEXPORT jlong JNICALL
+Java_org_apache_arrow_dataset_file_JniWrapper_newJniGlobalReference(JNIEnv* env, jobject,
+                                                                    jobject referent) {
+  JNI_METHOD_START
+  return reinterpret_cast<jlong>(env->NewGlobalRef(referent));
+  JNI_METHOD_END(-1L)
 }
 
+/*
+ * Class:     org_apache_arrow_dataset_file_JniWrapper
+ * Method:    newJniMethodReference
+ * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL
+Java_org_apache_arrow_dataset_file_JniWrapper_newJniMethodReference(JNIEnv* env, jobject,
+                                                                    jstring class_sig,
+                                                                    jstring method_name,
+                                                                    jstring method_sig) {
+  JNI_METHOD_START
+  jclass clazz = env->FindClass(JStringToCString(env, class_sig).data());
+  jmethodID jmethod_id =
+      env->GetMethodID(clazz, JStringToCString(env, method_name).data(),
+                       JStringToCString(env, method_sig).data());
+  return reinterpret_cast<jlong>(jmethod_id);
+  JNI_METHOD_END(-1L)
+}
 
 /*
  * Class:     org_apache_arrow_dataset_file_JniWrapper
@@ -702,40 +731,38 @@ Java_org_apache_arrow_dataset_file_JniWrapper_makeFileSystemDatasetFactory(
 }
 
 /*
- * Class:     org_apache_arrow_dataset_rados_JniWrapper
- * Method:    makeRadosDatasetFactory
- * Signature: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;II)J
+ * Class:     org_apache_arrow_dataset_file_JniWrapper
+ * Method:    writeFromScannerToFile
+ * Signature:
+ * (Lorg/apache/arrow/dataset/jni/NativeSerializedRecordBatchIterator;[BILjava/lang/String;[Ljava/lang/String;ILjava/lang/String;)V
  */
-/// \brief Simple implementation for a RADOSDatasetFactory. Use this ONLY if you need a RADOSDatasetFactory once.
-/// When more calls to the cluster are needed (e.g. for reading other files another
-/// \return native instance reference to created connection.
-JNIEXPORT jlong JNICALL
-Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactorySimple(JNIEnv* env, jobject, jstring path_to_config, jstring data_pool, jstring user_name, jstring cluster_name, jstring cls_name, jstring uri, jint file_format_id) {
+JNIEXPORT void JNICALL
+Java_org_apache_arrow_dataset_file_JniWrapper_writeFromScannerToFile(
+    JNIEnv* env, jobject, jobject itr, jbyteArray schema_bytes, jint file_format_id,
+    jstring uri, jobjectArray partition_columns, jint max_partitions,
+    jstring base_name_template) {
   JNI_METHOD_START
-  auto connection = createRadosConnection(JStringToCString(env, path_to_config), JStringToCString(env, data_pool), JStringToCString(env, user_name), JStringToCString(env, cluster_name), JStringToCString(env, cls_name));
-  auto dataset = JniGetOrThrow(createRadosDatasetFactory(connection, JStringToCString(env, uri), file_format_id));
-  return CreateNativeRef(dataset);
-  JNI_METHOD_END(-1L)
-}
-
-
-/*
- * Class:     org_apache_arrow_dataset_rados_JniWrapper
- * Method:    makeRadosDatasetFactory
- * Signature: (J;Ljava/lang/String;II)J
- */
-/// \brief Standard implementation for a RADOSDatasetFactory. Use this when using a Connection multiple times.
-/// Using this function ensures the connection will be reused, which is (depending on the connection)
-/// a lot less impactful on performance.
-///
-/// To obtain a connection reference, use `Java_org_apache_arrow_dataset_rados_JniWrapper_createConnection`.
-/// \return native instance reference to created connection.
-JNIEXPORT jlong JNICALL
-Java_org_apache_arrow_dataset_rados_JniWrapper_makeRadosDatasetFactory(JNIEnv* env, jobject, jlong connection_id, jstring uri, jint file_format_id) {
-    JNI_METHOD_START
-    auto connection = RetrieveNativeInstance<arrow::dataset::connection::RadosConnection>(connection_id);
-    auto datasetFactory = JniGetOrThrow(
-            createRadosDatasetFactory(connection, JStringToCString(env, uri), file_format_id));
-    return CreateNativeRef(datasetFactory);
-    JNI_METHOD_END(-1L)
+  JavaVM* vm;
+  if (env->GetJavaVM(&vm) != JNI_OK) {
+    JniThrow("Unable to get JavaVM instance");
+  }
+  auto schema = JniGetOrThrow(FromSchemaByteArray(env, schema_bytes));
+  auto scanner = JniGetOrThrow(MakeJavaDatasetScanner(vm, itr, schema));
+  std::shared_ptr<arrow::dataset::FileFormat> file_format =
+      JniGetOrThrow(GetFileFormat(file_format_id));
+  arrow::dataset::FileSystemDatasetWriteOptions options;
+  std::string output_path;
+  auto filesystem = JniGetOrThrow(
+      arrow::fs::FileSystemFromUri(JStringToCString(env, uri), &output_path));
+  std::vector<std::string> partition_column_vector =
+      ToStringVector(env, partition_columns);
+  options.file_write_options = file_format->DefaultWriteOptions();
+  options.filesystem = filesystem;
+  options.base_dir = output_path;
+  options.basename_template = JStringToCString(env, base_name_template);
+  options.partitioning = std::make_shared<arrow::dataset::HivePartitioning>(
+      arrow::dataset::SchemaFromColumnNames(schema, partition_column_vector));
+  options.max_partitions = max_partitions;
+  JniAssertOkOrThrow(arrow::dataset::FileSystemDataset::Write(options, scanner));
+  JNI_METHOD_END()
 }
