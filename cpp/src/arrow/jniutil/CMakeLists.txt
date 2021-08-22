@@ -19,10 +19,9 @@
 # arrow_dataset_jni
 #
 
+arrow_install_all_headers("arrow/jniutil")
 set(JAVA_AWT_INCLUDE_PATH NotNeeded) # We don't care about Java AWT, only about JNI functionality.
 find_package(JNI REQUIRED)
-arrow_install_all_headers("arrow/jniutil")
-
 
 
 add_arrow_test(arrow_jniutil_test
