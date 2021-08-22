@@ -35,6 +35,7 @@ add_jar(
         src/main/java/org/apache/arrow/dataset/jni/JniLoader.java
         src/main/java/org/apache/arrow/dataset/jni/JniWrapper.java
         src/main/java/org/apache/arrow/dataset/file/JniWrapper.java
+        src/main/java/org/apache/arrow/dataset/rados/JniWrapper.java
         src/main/java/org/apache/arrow/dataset/jni/NativeMemoryPool.java
         src/main/java/org/apache/arrow/dataset/jni/ReservationListener.java
         src/main/java/org/apache/arrow/dataset/file/NativeScannerAdaptor.java
