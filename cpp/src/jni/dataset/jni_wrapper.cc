@@ -600,7 +600,7 @@ JNIEXPORT void JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_closeDataset
  * Signature: (J[Ljava/lang/String;[BJJ)J
  */
 JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScanner(
-    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jbyteArray filter,
+    JNIEnv* env, jobject, jlong dataset_id, jobjectArray columns, jbyteArray filter, jint fragment_readahead,
     jlong batch_size, jlong memory_pool_id) {
   JNI_METHOD_START
   arrow::MemoryPool* pool = reinterpret_cast<arrow::MemoryPool*>(memory_pool_id);
@@ -613,19 +613,29 @@ JNIEXPORT jlong JNICALL Java_org_apache_arrow_dataset_jni_JniWrapper_createScann
       JniGetOrThrow(dataset->NewScan());
   JniAssertOkOrThrow(scanner_builder->Pool(pool));
 
+  // Sets column projection.
   std::vector<std::string> column_vector = ToStringVector(env, columns);
   if (!column_vector.empty()) {
     JniAssertOkOrThrow(scanner_builder->Project(column_vector));
   }
-  JniAssertOkOrThrow(scanner_builder->BatchSize(batch_size));
+
+  // Sets batchsize.
+  if (batch_size >= 0L) {
+      JniAssertOkOrThrow(scanner_builder->BatchSize(batch_size));
+  }
+
+  // Sets fragment readahead.
+  if (fragment_readahead >= 0) {
+      JniAssertOkOrThrow(scanner_builder->FragmentReadahead(fragment_readahead));
+  }
+
   // initialize filters
   jsize exprs_len = env->GetArrayLength(filter);
   jbyte* exprs_bytes = env->GetByteArrayElements(filter, 0);
   arrow::dataset::types::Condition condition;
   if (!ParseProtobuf(reinterpret_cast<uint8_t*>(exprs_bytes), exprs_len, &condition)) {
     releaseFilterInput(filter, exprs_bytes, env);
-    std::string error_message = "bad protobuf message";
-    env->ThrowNew(illegal_argument_exception_class, error_message.c_str());
+    JniThrow("bad protobuf message");
   }
   if (condition.has_root()) {
     JniAssertOkOrThrow(scanner_builder->Filter(translateFilter(condition, env)));
